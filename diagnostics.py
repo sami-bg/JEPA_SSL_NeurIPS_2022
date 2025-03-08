@@ -182,5 +182,5 @@ class VICRegDiagnostics:
                 c_proj, c_pred_proj, normalize=False
             )
 
-        df = pd.io.json.json_normalize(dict(analysis=res), sep="/")
+        df = pd.json_normalize(dict(analysis=res), sep="/")
         return df.to_dict(orient="records")[0]

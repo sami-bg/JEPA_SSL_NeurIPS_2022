@@ -1,7 +1,7 @@
 import data
 from typing import Optional
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import dataclasses
 from pathlib import Path
 import random
@@ -66,13 +66,13 @@ class TrainConfig(ConfigBase):
     dataset_static_noise_speed: float = 0.0
     dataset_dot_std: float = 1.3
     dataset_normalize: bool = False
-    vicreg: VICRegConfig = VICRegConfig()
-    rssm: RSSMConfig = RSSMConfig()
-    simclr: SimCLRConfig = SimCLRConfig()
+    vicreg: VICRegConfig = field(default_factory=VICRegConfig)
+    rssm: RSSMConfig = field(default_factory=RSSMConfig)
+    simclr: SimCLRConfig = field(default_factory=SimCLRConfig)
     eval_at_the_end_only: bool = False
     dataset_type: DatasetType = DatasetType.Single
 
-    probing_cfg: probing.ProbingConfig = probing.ProbingConfig()
+    probing_cfg: probing.ProbingConfig = field(default_factory=probing.ProbingConfig)
 
     id_predictor: bool = False
 
@@ -285,5 +285,7 @@ def main(config: TrainConfig):
 
 
 if __name__ == "__main__":
+    import sys
+    sys.argv[1:] = ["--configs", "/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(3).simclr.best.yaml"]
     cfg = TrainConfig.parse_from_command_line()
     main(cfg)

@@ -1,7 +1,7 @@
 import data
 from typing import Optional
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import dataclasses
 from pathlib import Path
 import random
@@ -23,6 +23,7 @@ from simclr import SimCLRConfig, SimCLR
 from vicreg import VICRegConfig, VICRegPredMultistep
 from lars import LARS, exclude_bias_and_norm, adjust_learning_rate
 import probing
+# from vjepa import VJEPAConfig, VJEPAPredMultistep
 
 # os.environ['WANDB_DISABLED'] = "true"
 
@@ -70,13 +71,13 @@ class TrainConfig(ConfigBase):
     dataset_static_noise_speed: float = 0.0
     dataset_dot_std: float = 1.3
     dataset_normalize: bool = False
-    vicreg: VICRegConfig = VICRegConfig()
-    rssm: RSSMConfig = RSSMConfig()
-    simclr: SimCLRConfig = SimCLRConfig()
+    vicreg: VICRegConfig = field(default_factory=VICRegConfig)
+    rssm: RSSMConfig = field(default_factory=RSSMConfig)
+    simclr: SimCLRConfig = field(default_factory=SimCLRConfig)
     eval_at_the_end_only: bool = False
     dataset_type: DatasetType = DatasetType.Single
 
-    probing_cfg: probing.ProbingConfig = probing.ProbingConfig()
+    probing_cfg: probing.ProbingConfig = field(default_factory=probing.ProbingConfig)
 
 
 class Trainer:
@@ -394,5 +395,37 @@ def main(config: TrainConfig):
 
 
 if __name__ == "__main__":
-    cfg = TrainConfig.parse_from_command_line()
-    main(cfg)
+    import sys
+    import multiprocessing as mp
+    
+    FIXED_UNIFORM_PATHS = [
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.5).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1.5).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2.5).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(3).vicreg.best.yaml',
+    ]
+
+    CHANGING_UNIFORM_PATHS = [
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0.5).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1.5).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2.5).vicreg.best.yaml',
+        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(3).vicreg.best.yaml',
+    ]
+
+    cfgs = []
+    for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
+        sys.argv[1:] = [
+            "--configs", path
+        ]
+        mp.set_start_method('spawn', force=True)
+        cfg = TrainConfig.parse_from_command_line()
+        cfgs.append(cfg)
+    
+    with mp.Pool(processes=12) as pool:
+        pool.map(main, cfgs)
