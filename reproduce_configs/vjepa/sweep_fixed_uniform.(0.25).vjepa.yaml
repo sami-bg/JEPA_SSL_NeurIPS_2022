@@ -84,7 +84,7 @@ vjepa:
   patch_size: 4
   num_frames: 18
   channels: 1
-  epochs: 2
+  epochs: 100
   base_lr: 0.2
   ema: [0.998, 1.0]
   ipe: 78  # Same as dataset_size / batch size
