@@ -232,7 +232,7 @@ class Trainer:
                 print("saved config")
 
     def train(self):
-        self.save_model()
+        self.save_checkpoint()
 
         if not self.config.eval_at_the_end_only or self.config.quick_debug:
             self.validate()
@@ -291,7 +291,7 @@ class Trainer:
             if (
                 self.epoch % 20 == 0 and not self.config.eval_at_the_end_only
             ) or self.epoch >= self.model_config.epochs:
-                self.save_model()
+                self.save_checkpoint()
                 self.validate()
 
     def validate(self):
