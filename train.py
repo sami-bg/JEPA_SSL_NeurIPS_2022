@@ -405,7 +405,7 @@ if __name__ == "__main__":
     import multiprocessing as mp
     
     FIXED_UNIFORM_PATHS = [
-        '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vicreg.best.yaml',
+        '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vjepa.yaml',
         # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.5).vicreg.best.yaml',
         # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1).vicreg.best.yaml',
         # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1.5).vicreg.best.yaml',
