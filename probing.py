@@ -26,7 +26,7 @@ class ProbingConfig(ConfigBase):
 
 @torch.no_grad()
 def probe_enc_position_visualize(
-    states, pred_loc,
+    states, pred_loc, target_loc
 ):
 
     plt.figure(dpi=200)
@@ -42,14 +42,25 @@ def probe_enc_position_visualize(
 
             pred_x_loc = pred_loc[idx][0,0]
             pred_y_loc = pred_loc[idx][0,1]
-
             plt.plot(
                 pred_x_loc.item(),
                 pred_y_loc.item(),
                 marker="o",
-                markersize=2,
+                markersize=3,
                 markeredgecolor="red",
                 markerfacecolor="green",
+                alpha=0.5,
+            )
+
+            target_x_loc = target_loc[idx][0,0]
+            target_y_loc = target_loc[idx][0,1]
+            plt.plot(
+                target_x_loc.item(),
+                target_y_loc.item(),
+                marker="x",
+                markersize=3,
+                markeredgecolor="red",
+                markerfacecolor="yellow",
                 alpha=0.5,
             )
 
@@ -168,13 +179,15 @@ def probe_enc_position(
                 loss = 0.0
                 for i in range(num_tubelets):
                     pred_loc = prober(e[:, i])
-                    loss += location_losses(pred_loc, target_loc[:, i])
+                    target_frame_loc = target_loc[:, i]
+                    loss += location_losses(pred_loc, target_frame_loc)
                 loss /= num_tubelets
             else:
                 target_loc = batch.locations[:, 0].cuda().float()
                 e = backbone(batch.states[:, 0].cuda())
                 pred_loc = prober(e)
-                loss = location_losses(pred_loc, target_loc).mean()
+                target_frame_loc = target_loc
+                loss = location_losses(pred_loc, target_frame_loc).mean()
 
             eval_losses.append(loss.item())
 
@@ -184,7 +197,8 @@ def probe_enc_position(
         plt.grid()
         plt.show()
         # NOTE SAMI: Uses the fact that python still has access to the variables from the previous loop.
-        probe_enc_position_visualize(batch.states, pred_loc)
+        probe_enc_position_visualize(
+            batch.states, pred_loc, target_frame_loc)
         plt.show()
         if not os.path.exists("visualizations"):
             os.makedirs("visualizations")

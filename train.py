@@ -441,7 +441,7 @@ if __name__ == "__main__":
     # Non-multiprocessing version
     # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
     sys.argv[1:] = [
-        "--configs", '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
+        "--configs", '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
     ]
     cfg = TrainConfig.parse_from_command_line()
     main(cfg)
