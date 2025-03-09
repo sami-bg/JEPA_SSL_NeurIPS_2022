@@ -23,9 +23,9 @@ from simclr import SimCLRConfig, SimCLR
 from vicreg import VICRegConfig, VICRegPredMultistep
 from lars import LARS, exclude_bias_and_norm, adjust_learning_rate
 import probing
-# from vjepa import VJEPAConfig, VJEPAPredMultistep
+from vjepa import VJEPAConfig, VJEPA
 
-# os.environ['WANDB_DISABLED'] = "true"
+os.environ['WANDB_DISABLED'] = "true"
 
 
 def seed_everything(seed):
@@ -38,12 +38,13 @@ class ModelType(enum.Enum):
     VICReg = enum.auto()
     RSSM = enum.auto()
     SimCLR = enum.auto()
-
+    VJEPA = enum.auto()
 
 class DatasetType(Enum):
     Single = auto()
     Multiple = auto()
 
+OmegaConf.register_new_resolver("eval", eval)
 
 @dataclass
 class TrainConfig(ConfigBase):
@@ -74,6 +75,7 @@ class TrainConfig(ConfigBase):
     vicreg: VICRegConfig = field(default_factory=VICRegConfig)
     rssm: RSSMConfig = field(default_factory=RSSMConfig)
     simclr: SimCLRConfig = field(default_factory=SimCLRConfig)
+    vjepa: VJEPAConfig = field(default_factory=VJEPAConfig)
     eval_at_the_end_only: bool = False
     dataset_type: DatasetType = DatasetType.Single
 
@@ -94,6 +96,10 @@ class Trainer:
         elif self.config.model_type == ModelType.SimCLR:
             self.model_config = self.config.simclr
             self.pred_ms = SimCLR(config.simclr)
+            self.pred_ms = self.pred_ms.cuda()
+        elif self.config.model_type == ModelType.VJEPA:
+            self.model_config = self.config.vjepa
+            self.pred_ms = VJEPA(self.config.vjepa)
             self.pred_ms = self.pred_ms.cuda()
         else:
             raise ValueError(f"No valid model type : {self.config.model_type}")
@@ -217,7 +223,7 @@ class Trainer:
                 print("saved config")
 
     def train(self):
-        if self.config.model_type in [ModelType.VICReg, ModelType.SimCLR]:
+        if self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA]:
             self.optimizer = LARS(
                 self.pred_ms.parameters(),
                 lr=0,
@@ -254,7 +260,7 @@ class Trainer:
                             lr=self.model_config.learning_rate / 10,
                             eps=self.model_config.rssm_adam_epsilon,
                         )
-                elif self.config.model_type in [ModelType.VICReg, ModelType.SimCLR]:
+                elif self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA]:
                     lr = adjust_learning_rate(
                         self.model_config, self.optimizer, self.ds, step
                     )
@@ -399,33 +405,42 @@ if __name__ == "__main__":
     import multiprocessing as mp
     
     FIXED_UNIFORM_PATHS = [
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.5).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1.5).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2.5).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(3).vicreg.best.yaml',
+        '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.5).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1.5).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2.5).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(3).vicreg.best.yaml',
     ]
 
     CHANGING_UNIFORM_PATHS = [
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0.5).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1.5).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2.5).vicreg.best.yaml',
-        '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(3).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0.5).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1.5).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2.5).vicreg.best.yaml',
+        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(3).vicreg.best.yaml',
     ]
 
-    cfgs = []
+    # Multiprocessing version
+    # cfgs = []
+    # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
+    #     sys.argv[1:] = [
+    #         "--configs", path
+    #     ]
+    #     mp.set_start_method('spawn', force=True)
+    #     cfg = TrainConfig.parse_from_command_line()
+    #     cfgs.append(cfg)
+    
+    # with mp.Pool(processes=12) as pool:
+    #     pool.map(main, cfgs)
+
+    # Non-multiprocessing version
     for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
         sys.argv[1:] = [
             "--configs", path
         ]
-        mp.set_start_method('spawn', force=True)
         cfg = TrainConfig.parse_from_command_line()
-        cfgs.append(cfg)
-    
-    with mp.Pool(processes=12) as pool:
-        pool.map(main, cfgs)
+        main(cfg)

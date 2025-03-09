@@ -799,8 +799,10 @@ class PatchEmbed3D(nn.Module):
         )
 
     def forward(self, x, **kwargs):
-        B, C, T, H, W = x.shape
-        x = self.proj(x).flatten(2).transpose(1, 2)
+        T, B, C, H, W = x.shape
+        # This assumes B C T H W? But we have T B C H W
+        x = self.proj(x.permute(1, 2, 0, 3, 4)).flatten(2).transpose(1, 2)
+        # B (T P P) C
         return x
 
 class VisionTransformer(nn.Module):
@@ -838,8 +840,6 @@ class VisionTransformer(nn.Module):
         self.tubelet_size = tubelet_size
         self.is_video = num_frames > 1
 
-        grid_size = self.input_size // self.patch_size
-        grid_depth = self.num_frames // self.tubelet_size
 
         # Tokenize pixels with convolution
         if self.is_video:
@@ -880,8 +880,6 @@ class VisionTransformer(nn.Module):
                 qk_scale=qk_scale,
                 drop=drop_rate,
                 act_layer=nn.GELU,
-                grid_size=grid_size,
-                grid_depth=grid_depth,
                 attn_drop=attn_drop_rate,
                 norm_layer=norm_layer)
             for i in range(depth)])
@@ -986,7 +984,7 @@ class VisionTransformer(nn.Module):
         if self.is_video:
 
             # If pos_embed already corret size, just return
-            _, _, T, H, W = x.shape
+            T, _, _, H, W = x.shape
             if H == self.input_size and W == self.input_size and T == self.num_frames:
                 return pos_embed
 
@@ -1078,9 +1076,6 @@ class VisionTransformerPredictor(nn.Module):
         self.tubelet_size = tubelet_size
         self.is_video = num_frames > 1
 
-        grid_size = self.input_size // self.patch_size
-        grid_depth = self.num_frames // self.tubelet_size
-
         if self.is_video:
             self.num_patches = num_patches = (
                 (num_frames // tubelet_size)
@@ -1109,8 +1104,6 @@ class VisionTransformerPredictor(nn.Module):
                 drop=drop_rate,
                 act_layer=nn.GELU,
                 attn_drop=attn_drop_rate,
-                grid_size=grid_size,
-                grid_depth=grid_depth,
                 norm_layer=norm_layer)
             for i in range(depth)])
 
@@ -1180,7 +1173,7 @@ class VisionTransformerPredictor(nn.Module):
         x = alpha**0.5 * x + (1.-alpha)**0.5 * torch.randn(x.shape, device=x.device)
         return x
 
-    def forward(self, ctxt, tgt, masks_ctxt, masks_tgt, mask_index=1):
+    def forward(self, ctxt, tgt, masks_ctxt, masks_tgt, actions, mask_index=1):
         """
         :param ctxt: context tokens
         :param tgt: target tokens

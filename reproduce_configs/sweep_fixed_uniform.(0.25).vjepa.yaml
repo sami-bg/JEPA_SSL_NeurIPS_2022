@@ -1,4 +1,4 @@
-model_type: VICReg
+model_type: VJEPA
 n_steps: 17
 val_n_steps: 17
 dataset_size: 10000
