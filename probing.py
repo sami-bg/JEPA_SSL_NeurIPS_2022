@@ -210,6 +210,78 @@ def probe_enc_position(
     return unnormalized_avg_loss
 
 
+def probe_action_position_vjepa(
+    backbone: torch.nn.Module,
+    embedding: int,
+    dataset,
+    *,
+    visualize: bool = False,
+    prober_arch: str = "",
+    quick_debug: bool = False,
+    config: ProbingConfig = ProbingConfig(),
+    name_suffix: str = "",
+    within_tubelet: bool = False,
+):
+    test_batch = dataset[0]
+    batch_size = test_batch.states.shape[0]
+    num_timesteps = test_batch.states.shape[1]
+    tubelet_size = 2
+    num_tubelets = num_timesteps // tubelet_size
+
+    num_dots, action_dim = test_batch.actions[0, 0].shape
+    # NOTE: Keep actions that correspond to within tubelets, so:
+    # 0->1, 2->3, 4->5, ..., or between tubelets: 1->2, 3->4, 5->6, ...
+    if within_tubelet: target_action = target_action[:, 0::2, :, :]
+    else:              target_action = target_action[:, 1::2, :, :]
+    
+    prober_output_shape = (num_dots, num_actions := target_action.shape[1])
+
+    prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
+    prober = prober.cuda()
+
+    if not config.full_finetune:
+        optimizer_pred_prober = torch.optim.Adam(prober.parameters(), config.lr)
+    else:
+        optimizer_pred_prober = torch.optim.Adam(
+            chain(prober.parameters(), backbone.parameters()),
+            config.lr,
+        )
+
+    losses = []
+
+    if quick_debug:
+        config.epochs_enc = 1
+
+    step = 0
+    sample_step = 0
+    ##### TRAINING #####
+    for epoch in tqdm(range(config.epochs_enc)):
+        for batch in dataset:
+            target_action = batch.actions.view(batch_size, num_tubelets, num_dots, action_dim // (tubelet_size // 2))
+            if within_tubelet:  target_action = target_action[:, 0::2, :, :]
+            else:               target_action = target_action[:, 1::2, :, :]
+
+            states = batch.states.permute(1, 0, 2, 3, 4)
+            e = backbone(states.cuda())
+            e = e.view(batch_size, num_tubelets, -1)
+            loss = 0.0
+            if within_tubelet:
+                for i in range(0, num_timesteps, tubelet_size):
+                    # NOTE Take a tubelet and predict an action for each dot.
+                    pred_action = prober(e[:, i])
+                    loss += location_losses(pred_action, target_action[:, i])
+                loss /= num_tubelets
+            else: 
+                # NOTE Take pairs of tubelets and predict an action for each dot.
+                for i in range(1, num_timesteps, tubelet_size):
+                    # TODO 
+                    pred_action = prober(e[:, i], e[:, i-1])
+                    loss += location_losses(pred_action, target_action[:, i])
+                loss /= num_tubelets
+            losses.append(loss.mean().item())
+
+            if quick_debug: break
+
 def probe_pred_position_visualize(
     model: torch.nn.Module,
     *,
