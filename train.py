@@ -108,8 +108,9 @@ class Trainer:
 
         self.save_config()
         self.init_dataset()
+        self.init_optimizer()
 
-        load_result = self.maybe_load_model()
+        load_result = self.maybe_load_checkpoint()
         if (
             config.eval_only
             and not config.probing_cfg.full_finetune
@@ -124,6 +125,22 @@ class Trainer:
         if config.wandb:
             wandb.run.summary["n_params"] = self.n_parameters
             wandb.run.summary["actual_repr_size"] = self.pred_ms.embedding
+
+    def init_optimizer(self):
+        if self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA]:
+            self.optimizer = LARS(
+                self.pred_ms.parameters(),
+                lr=0,
+                weight_decay=1e-6,
+                weight_decay_filter=exclude_bias_and_norm,
+                lars_adaptation_filter=exclude_bias_and_norm,
+            )
+        elif self.config.model_type == ModelType.RSSM:
+            self.optimizer = torch.optim.Adam(
+                self.pred_ms.parameters(),
+                lr=self.model_config.learning_rate,
+                eps=self.model_config.rssm_adam_epsilon,
+            )
 
     def init_dataset(self):
         if self.config.dataset_type == DatasetType.Single:
@@ -196,10 +213,13 @@ class Trainer:
                 f"dataset type {self.config.dataset_type} is not supported"
             )
 
-    def maybe_load_model(self):
+    def maybe_load_checkpoint(self):
         if self.config.load_checkpoint_path is not None:
-            checkpoint = torch.load(self.config.load_checkpoint_path)
+            checkpoint = torch.load(self.config.load_checkpoint_path, weights_only=False)
             self.pred_ms.load_state_dict(checkpoint["model_state_dict"])
+            self.epoch = checkpoint.get("epoch", 0)
+            self.sample_step = checkpoint.get("sample_step", 0)
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             return True
         return False
 
@@ -212,21 +232,6 @@ class Trainer:
                 print("saved config")
 
     def train(self):
-        if self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA]:
-            self.optimizer = LARS(
-                self.pred_ms.parameters(),
-                lr=0,
-                weight_decay=1e-6,
-                weight_decay_filter=exclude_bias_and_norm,
-                lars_adaptation_filter=exclude_bias_and_norm,
-            )
-        elif self.config.model_type == ModelType.RSSM:
-            self.optimizer = torch.optim.Adam(
-                self.pred_ms.parameters(),
-                lr=self.model_config.learning_rate,
-                eps=self.model_config.rssm_adam_epsilon,
-            )
-
         self.save_model()
 
         if not self.config.eval_at_the_end_only or self.config.quick_debug:
@@ -292,19 +297,6 @@ class Trainer:
     def validate(self):
         if not self.config.probing_cfg.full_finetune:
             self.pred_ms.eval()
-        if self.config.model_type != ModelType.VJEPA:
-            # NOTE SAMI: VJEPA can't do this because our predictor is self-predictive and is not a dynamics model.
-            probing_result = probing.probe_pred_position(
-                self.pred_ms.backbone,
-                dataset=self.val_ds,
-                embedding=self.pred_ms.embedding,
-                predictor=self.pred_ms.predictor,
-                visualize=False,
-                quick_debug=self.config.quick_debug,
-                burn_in=self.pred_ms.args.rnn_burnin,
-                config=self.config.probing_cfg,
-                name_suffix=f"_{self.epoch}",
-            )
 
         probing_enc_result = probing.probe_enc_position(
             backbone=self.pred_ms.backbone,
@@ -318,50 +310,54 @@ class Trainer:
         )
 
         log_dict = {
-            "avg_eval_loss": (
-                probing_result.average_eval_loss
-                if self.config.model_type != ModelType.VJEPA
-                else None
-            ),
-            "avg_eval_loss_rmse": (
-                np.sqrt(probing_result.average_eval_loss)
-                if self.config.model_type != ModelType.VJEPA
-                else None
-            ),
             "avg_eval_enc_loss": probing_enc_result,
             "avg_eval_enc_loss_rmse": np.sqrt(probing_enc_result),
             "epoch": self.epoch,
             "sample_step": self.sample_step,
         }
 
-        for i in range(probing_result.eval_losses_per_step.shape[0]):
-            for j in range(probing_result.eval_losses_per_step.shape[1]):
-                log_dict[f"eval/loss_{i}_{j}"] = probing_result.eval_losses_per_step[
-                    i, j
-                ].item()
-                log_dict[f"eval/loss_{i}_{j}_rmse"] = np.sqrt(
-                    probing_result.eval_losses_per_step[i, j].item()
-                )
-
-        for j in range(probing_result.eval_losses_per_step.shape[1]):
-            log_dict[f"eval/loss_{j}"] = (
-                probing_result.eval_losses_per_step[:, j].mean().item()
-            )
-            log_dict[f"eval/loss_{j}_rmse"] = np.sqrt(
-                probing_result.eval_losses_per_step[:, j].mean().item()
-            )
-
-        if self.config.probe_mpc:
-            probe_mpc_result = probing.probe_mpc(
+        if self.config.model_type != ModelType.VJEPA:
+            # NOTE SAMI: VJEPA can't do this because our predictor is self-predictive and is not a dynamics model.
+            probing_result = probing.probe_pred_position(
                 self.pred_ms.backbone,
+                dataset=self.val_ds,
                 embedding=self.pred_ms.embedding,
                 predictor=self.pred_ms.predictor,
-                prober=probing_result.model,
-                plan_size=self.config.val_n_steps,
+                visualize=False,
+                quick_debug=self.config.quick_debug,
+                burn_in=self.pred_ms.args.rnn_burnin,
+                config=self.config.probing_cfg,
+                name_suffix=f"_{self.epoch}",
             )
-            log_dict["average_mpc_mse"] = probe_mpc_result.average_diff
-            for i in range(len(probe_mpc_result.figures)):
-                log_dict[f"mpc_{i}"] = probe_mpc_result.figures[i]
+            log_dict["avg_eval_loss"] = probing_result.average_eval_loss
+            log_dict["avg_eval_loss_rmse"] = np.sqrt(probing_result.average_eval_loss)
+            for i in range(probing_result.eval_losses_per_step.shape[0]):
+                for j in range(probing_result.eval_losses_per_step.shape[1]):
+                    log_dict[f"eval/loss_{i}_{j}"] = probing_result.eval_losses_per_step[
+                        i, j
+                    ].item()
+                    log_dict[f"eval/loss_{i}_{j}_rmse"] = np.sqrt(
+                        probing_result.eval_losses_per_step[i, j].item()
+                    )
+            for j in range(probing_result.eval_losses_per_step.shape[1]):
+                log_dict[f"eval/loss_{j}"] = (
+                    probing_result.eval_losses_per_step[:, j].mean().item()
+                )
+                log_dict[f"eval/loss_{j}_rmse"] = np.sqrt(
+                    probing_result.eval_losses_per_step[:, j].mean().item()
+                )
+
+            if self.config.probe_mpc:
+                probe_mpc_result = probing.probe_mpc(
+                    self.pred_ms.backbone,
+                    embedding=self.pred_ms.embedding,
+                    predictor=self.pred_ms.predictor,
+                    prober=probing_result.model,
+                    plan_size=self.config.val_n_steps,
+                )
+                log_dict["average_mpc_mse"] = probe_mpc_result.average_diff
+                for i in range(len(probe_mpc_result.figures)):
+                    log_dict[f"mpc_{i}"] = probe_mpc_result.figures[i]
 
         log_dict["custom_step"] = self.step
 
@@ -377,11 +373,13 @@ class Trainer:
 
         return probing_result
 
-    def save_model(self):
+    def save_checkpoint(self):
         if self.config.output_path is not None:
             os.makedirs(self.config.output_path, exist_ok=True)
             torch.save(
                 {
+                    "epoch": self.epoch,
+                    "sample_step": self.sample_step,
                     "model_state_dict": self.pred_ms.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                 },
@@ -441,7 +439,7 @@ if __name__ == "__main__":
     # Non-multiprocessing version
     # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
     sys.argv[1:] = [
-        "--configs", '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
+        "--configs", '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
     ]
     cfg = TrainConfig.parse_from_command_line()
     main(cfg)

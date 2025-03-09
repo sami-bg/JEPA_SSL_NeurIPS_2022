@@ -7,10 +7,10 @@ val_dataset_size: 10000
 wandb: true
 run_name: null
 run_group: null
-output_path: models/vjepa/fixed_uniform.(0.25)/
+output_path: null
 safe_every_n_epochs: 10
 eval_mpcs: 20
-quick_debug: true
+quick_debug: false
 seed: 1
 load_checkpoint_path: null
 eval_only: false
@@ -105,7 +105,7 @@ vjepa:
   encoder_drop_rate: 0.0
   encoder_attn_drop_rate: 0.0
   encoder_drop_path_rate: 0.0
-eval_at_the_end_only: true
+eval_at_the_end_only: false
 dataset_type: Single
 probing_cfg:
   full_finetune: false
