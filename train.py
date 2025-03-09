@@ -404,43 +404,43 @@ if __name__ == "__main__":
     import sys
     import multiprocessing as mp
     
-    FIXED_UNIFORM_PATHS = [
-        '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vjepa.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.5).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1.5).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2.5).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(3).vicreg.best.yaml',
-    ]
+    # FIXED_UNIFORM_PATHS = [
+    #     '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vjepa.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.5).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1.5).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2.5).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(3).vicreg.best.yaml',
+    # ]
 
-    CHANGING_UNIFORM_PATHS = [
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0.5).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1.5).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2.5).vicreg.best.yaml',
-        # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(3).vicreg.best.yaml',
-    ]
+    # CHANGING_UNIFORM_PATHS = [
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0.5).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1.5).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2.5).vicreg.best.yaml',
+    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(3).vicreg.best.yaml',
+    # ]
 
-    # Multiprocessing version
-    # cfgs = []
+    # # Multiprocessing version
+    # # cfgs = []
+    # # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
+    # #     sys.argv[1:] = [
+    # #         "--configs", path
+    # #     ]
+    # #     mp.set_start_method('spawn', force=True)
+    # #     cfg = TrainConfig.parse_from_command_line()
+    # #     cfgs.append(cfg)
+    
+    # # with mp.Pool(processes=12) as pool:
+    # #     pool.map(main, cfgs)
+
+    # Non-multiprocessing version
     # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
     #     sys.argv[1:] = [
     #         "--configs", path
     #     ]
-    #     mp.set_start_method('spawn', force=True)
-    #     cfg = TrainConfig.parse_from_command_line()
-    #     cfgs.append(cfg)
-    
-    # with mp.Pool(processes=12) as pool:
-    #     pool.map(main, cfgs)
-
-    # Non-multiprocessing version
-    for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
-        sys.argv[1:] = [
-            "--configs", path
-        ]
-        cfg = TrainConfig.parse_from_command_line()
-        main(cfg)
+    cfg = TrainConfig.parse_from_command_line()
+    main(cfg)
