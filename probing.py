@@ -2,7 +2,7 @@ import random
 from typing import NamedTuple, List, Any, Optional
 from itertools import chain
 from dataclasses import dataclass
-
+import os
 import torch
 from tqdm.auto import tqdm
 from matplotlib import pyplot as plt
@@ -12,7 +12,7 @@ import wandb
 import data
 from models import Prober
 from configs import ConfigBase
-
+from enums import ModelType
 
 @dataclass
 class ProbingConfig(ConfigBase):
@@ -26,11 +26,8 @@ class ProbingConfig(ConfigBase):
 
 @torch.no_grad()
 def probe_enc_position_visualize(
-    backbone: torch.nn.Module, prober: torch.nn.Module, dataset
+    states, pred_loc,
 ):
-    batch = next(iter(dataset))
-    enc = backbone(batch.states[:, 0].cuda())
-    pred_loc = prober(enc)
 
     plt.figure(dpi=200)
     pidx = 1
@@ -38,13 +35,13 @@ def probe_enc_position_visualize(
         for col in range(5):
             plt.subplot(5, 5, pidx)
             pidx += 1
-            idx = random.randint(0, batch.states.shape[0] - 1)
+            idx = random.randint(0, states.shape[0] - 1)
 
-            plt.imshow(batch.states[idx, 0, 0].cpu(), origin="lower")
+            plt.imshow(states[idx, 0, 0].cpu(), origin="lower")
             plt.axis("off")
 
-            pred_x_loc = pred_loc[idx, 0]
-            pred_y_loc = pred_loc[idx, 1]
+            pred_x_loc = pred_loc[idx][0,0]
+            pred_y_loc = pred_loc[idx][0,1]
 
             plt.plot(
                 pred_x_loc.item(),
@@ -67,10 +64,28 @@ def probe_enc_position(
     quick_debug: bool = False,
     config: ProbingConfig = ProbingConfig(),
     name_suffix: str = "",
+    model_type: ModelType,
 ):
     test_batch = dataset[0]
-
-    prober_output_shape = test_batch.locations[0, 0].shape
+    batch_size = test_batch.states.shape[0]
+    num_timesteps = test_batch.states.shape[1]
+    tubelet_size = 2
+    num_tubelets = num_timesteps // tubelet_size
+    if model_type == ModelType.VJEPA:
+        num_dots, location_dim = test_batch.locations[0, 0].shape
+        prober_output_shape = (num_dots, location_dim * tubelet_size)
+        # NOTE SAMI: For V-JEPA, the embedding is actually the flattened spatial patches for a tubelet.
+        # For example, if each pair of frames have 49 spatial patches with a 64 embedding dimension,
+        # then the input to the prober is 49*64 == 3136.
+        with torch.no_grad():
+            # NOTE Rearrange to make the temporal dimension the leading dimension
+            e = backbone(test_batch.states.permute(1, 0, 2, 3, 4).cuda())
+            # (batch_size, num_tubelets, num_spatial_patches, embedding_dim)
+            e = e.view(batch_size, num_tubelets, -1)
+            embedding = e.shape[-1]# 3136
+    else:
+        prober_output_shape = test_batch.locations[0, 0].shape
+    
     prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
     prober = prober.cuda()
 
@@ -89,15 +104,34 @@ def probe_enc_position(
 
     step = 0
     sample_step = 0
-
+    ##### TRAINING #####    
     for epoch in tqdm(range(config.epochs_enc)):
         for batch in dataset:
             target_loc = batch.locations[:, 0].cuda().float()
 
-            e = backbone(batch.states[:, 0].cuda())
-            pred_loc = prober(e)
-
-            loss = location_losses(pred_loc, target_loc)
+            if model_type == ModelType.VJEPA:
+                # NOTE SAMI: For V-JEPA we re-shape the locations to be (batch_size, num_tubelets, num_dots, 4).
+                target_loc = batch.locations.view(batch_size, num_tubelets, num_dots, location_dim * tubelet_size)
+                states = batch.states.permute(1, 0, 2, 3, 4)
+                # NOTE SAMI: For V-JEPA, we encode the entire sequence and then predict
+                # the location of the dot on each tubelet. The encoded sequence e is of shape
+                # (batch_size, num_patches_flattened, embedding_dim). For video of 18 frames, 28x28 px, and 4x4 patch size,
+                # we end up with (9x7x7, embed_dim) = (128,441,64) in this case.
+                e = backbone(states.cuda())
+                # NOTE SAMI: Since e is flattened, we need to reshape it back to batch_size x num_tubelets x spatial_patches x embedding_dim
+                # so that we can apply the prober to tubelets of the entire frame.
+                e = e.view(batch_size, num_tubelets, -1)
+                # NOTE SAMI: Prober here should be Linear(in_features=3136, out_features=(num_dots, 4), bias=False)
+                loss = 0.0
+                # NOTE SAMI: Average loss over all the tubelets.
+                for i in range(num_tubelets):
+                    pred_loc = prober(e[:, i])
+                    loss += location_losses(pred_loc, target_loc[:, i])
+                loss /= num_tubelets
+            else:
+                e = backbone(batch.states[:, 0].cuda())
+                pred_loc = prober(e)
+                loss = location_losses(pred_loc, target_loc)
 
             losses.append(loss.mean().item())
 
@@ -122,13 +156,26 @@ def probe_enc_position(
             if quick_debug:
                 break
 
+    ##### EVALUATION #####
     with torch.no_grad():
         eval_losses = []
         for batch in dataset:
-            target_loc = batch.locations[:, 0].cuda().float()
-            e = backbone(batch.states[:, 0].cuda())
-            pred_loc = prober(e)
-            loss = location_losses(pred_loc, target_loc).mean()
+            if model_type == ModelType.VJEPA:
+                target_loc = batch.locations.view(batch_size, num_timesteps // tubelet_size, num_dots, location_dim * tubelet_size).cuda().float()
+                states = batch.states.permute(1, 0, 2, 3, 4)
+                e = backbone(states.cuda())
+                e = e.view(batch_size, num_tubelets, -1)
+                loss = 0.0
+                for i in range(num_tubelets):
+                    pred_loc = prober(e[:, i])
+                    loss += location_losses(pred_loc, target_loc[:, i])
+                loss /= num_tubelets
+            else:
+                target_loc = batch.locations[:, 0].cuda().float()
+                e = backbone(batch.states[:, 0].cuda())
+                pred_loc = prober(e)
+                loss = location_losses(pred_loc, target_loc).mean()
+
             eval_losses.append(loss.item())
 
     if visualize:
@@ -136,8 +183,12 @@ def probe_enc_position(
         plt.plot(losses)
         plt.grid()
         plt.show()
-        probe_enc_position_visualize(backbone, prober, dataset)
+        # NOTE SAMI: Uses the fact that python still has access to the variables from the previous loop.
+        probe_enc_position_visualize(batch.states, pred_loc)
         plt.show()
+        if not os.path.exists("visualizations"):
+            os.makedirs("visualizations")
+        plt.savefig(f"visualizations/enc_position_visualization_{name_suffix}.png")
 
     avg_loss = np.mean(eval_losses)
     unnormalized_avg_loss = dataset.unnormalize_mse(avg_loss)
@@ -153,6 +204,7 @@ def probe_pred_position_visualize(
     predictor: torch.nn.Module,
     prober: torch.nn.Module,
     dataset,
+    model_type: ModelType,
 ):
     batch = next(iter(dataset))
 
@@ -171,7 +223,12 @@ def probe_pred_position_visualize(
     else:
         h0 = None
 
-    e = model(states[0].cuda())
+    # For V-JEPA, we need to pass in at least two frames to get a tubelet
+    if model_type == ModelType.VJEPA:
+        e = model(states[0:2].cuda())
+    else:
+        e = model(states[0].cuda())
+
     pred_encs = predictor.predict_sequence(enc=e, actions=actions, h=h0)
 
     # for i in range(batch.actions.shape[1]):
@@ -238,8 +295,13 @@ def probe_pred_position(
     config: ProbingConfig = ProbingConfig(),
     name_suffix: str = "",
 ):
-    if quick_debug:
-        config.epochs = 1
+   
+    # NOTE SAMI: Autoregressively rollout future states from first state and all actions
+    # and then take loss on each predicted state with its ground truth.
+    # VJEPA Can't really do this because our predictor is self-predictive and is not a dynamics model.
+    # What we might be able to do instead is to take a tubelets (2 frames) and then predict the action from those tubelets.
+    # Or also, take the tubelets (2 frames) and predict the two states (locations) from those tubelets. if quick_debug:
+    config.epochs = 1
     test_batch = next(iter(dataset))
 
     prober_output_shape = test_batch.locations[0, 0].shape
@@ -274,8 +336,10 @@ def probe_pred_position(
                 h0 = predictor.burn_in(burnin_encodings, burnin_actions)
             else:
                 h0 = None
-
+            # For V-JEPA, we need to pass in at least two frames to get a tubelet
             e = backbone(states[0])
+
+
             pred_encs = predictor.predict_sequence(enc=e, actions=actions, h=h0)
             if not config.full_finetune:
                 pred_encs = pred_encs.detach()

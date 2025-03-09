@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 import dataclasses
 from pathlib import Path
 import random
-from enum import Enum, auto
 
 import torch
 import numpy as np
@@ -14,7 +13,6 @@ import wandb
 from omegaconf import OmegaConf, MISSING
 from matplotlib import pyplot as plt
 import matplotlib
-import enum
 from torch import nn
 
 from configs import ConfigBase
@@ -24,6 +22,7 @@ from vicreg import VICRegConfig, VICRegPredMultistep
 from lars import LARS, exclude_bias_and_norm, adjust_learning_rate
 import probing
 from vjepa import VJEPAConfig, VJEPA
+from enums import ModelType, DatasetType
 
 os.environ['WANDB_DISABLED'] = "true"
 
@@ -33,16 +32,6 @@ def seed_everything(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-
-class ModelType(enum.Enum):
-    VICReg = enum.auto()
-    RSSM = enum.auto()
-    SimCLR = enum.auto()
-    VJEPA = enum.auto()
-
-class DatasetType(Enum):
-    Single = auto()
-    Multiple = auto()
 
 OmegaConf.register_new_resolver("eval", eval)
 
@@ -303,18 +292,20 @@ class Trainer:
     def validate(self):
         if not self.config.probing_cfg.full_finetune:
             self.pred_ms.eval()
+        if self.config.model_type != ModelType.VJEPA:
+            # NOTE SAMI: VJEPA can't do this because our predictor is self-predictive and is not a dynamics model.
+            probing_result = probing.probe_pred_position(
+                self.pred_ms.backbone,
+                dataset=self.val_ds,
+                embedding=self.pred_ms.embedding,
+                predictor=self.pred_ms.predictor,
+                visualize=False,
+                quick_debug=self.config.quick_debug,
+                burn_in=self.pred_ms.args.rnn_burnin,
+                config=self.config.probing_cfg,
+                name_suffix=f"_{self.epoch}",
+            )
 
-        probing_result = probing.probe_pred_position(
-            self.pred_ms.backbone,
-            dataset=self.val_ds,
-            embedding=self.pred_ms.embedding,
-            predictor=self.pred_ms.predictor,
-            visualize=False,
-            quick_debug=self.config.quick_debug,
-            burn_in=self.pred_ms.args.rnn_burnin,
-            config=self.config.probing_cfg,
-            name_suffix=f"_{self.epoch}",
-        )
         probing_enc_result = probing.probe_enc_position(
             backbone=self.pred_ms.backbone,
             embedding=self.pred_ms.embedding,
@@ -322,11 +313,21 @@ class Trainer:
             quick_debug=self.config.quick_debug,
             config=self.config.probing_cfg,
             name_suffix=f"_{self.epoch}",
+            model_type=self.config.model_type,
+            visualize=self.config.model_type == ModelType.VJEPA
         )
 
         log_dict = {
-            "avg_eval_loss": probing_result.average_eval_loss,
-            "avg_eval_loss_rmse": np.sqrt(probing_result.average_eval_loss),
+            "avg_eval_loss": (
+                probing_result.average_eval_loss
+                if self.config.model_type != ModelType.VJEPA
+                else None
+            ),
+            "avg_eval_loss_rmse": (
+                np.sqrt(probing_result.average_eval_loss)
+                if self.config.model_type != ModelType.VJEPA
+                else None
+            ),
             "avg_eval_enc_loss": probing_enc_result,
             "avg_eval_enc_loss_rmse": np.sqrt(probing_enc_result),
             "epoch": self.epoch,
@@ -439,8 +440,8 @@ if __name__ == "__main__":
 
     # Non-multiprocessing version
     # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
-    #     sys.argv[1:] = [
-    #         "--configs", path
-    #     ]
+    sys.argv[1:] = [
+        "--configs", '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
+    ]
     cfg = TrainConfig.parse_from_command_line()
     main(cfg)

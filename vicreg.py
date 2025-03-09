@@ -93,7 +93,9 @@ class VICRegPredMultistep(torch.nn.Module):
         self.num_features = self.projector.output_dim
 
         self.predictor = models.build_predictor(
-            args.predictor, self.embedding, self.args.action_dim, self.args.rnn_layers
+            args.predictor, self.embedding, self.args.action_dim, self.args.rnn_layers,
+            attentive_num_heads=0,
+            attentive_depth=0
         )
 
         if args.decoding_coeff > 0:

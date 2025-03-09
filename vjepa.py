@@ -29,7 +29,13 @@ class VJEPAConfig(ConfigBase):
     epochs: int = 100
     base_lr: float = 0.2
     
-    #### Predictor
+    #### Downstream Predictor
+    predictor: str = "attentive_classifier"
+    attentive_num_heads: int = 2
+    attentive_depth: int = 2
+    action_dim: int = 2
+
+    #### JEPA Predictor
     predictor_embed_dim: int = 32
     predictor_depth: int = 6
     predictor_num_heads: int = 4
@@ -83,7 +89,12 @@ class VJEPA(torch.nn.Module):
                 "encoder_qk_scale": args.encoder_qk_scale,
             }
         )
-
+        self.predictor = models.build_predictor(
+            args.predictor, self.embedding, self.args.action_dim,
+            rnn_layers=0,
+            attentive_num_heads=args.attentive_num_heads,
+            attentive_depth=args.attentive_depth
+        )
         print(f"backbone is {args.arch}")
         self.backbone: models.VisionTransformer
         ema, ipe, ipe_scale, num_epochs = args.ema, args.ipe, args.ipe_scale, args.epochs
@@ -135,6 +146,7 @@ class VJEPA(torch.nn.Module):
         """states [T, batch_size, 1, 28, 28]
         actions [T-1, batch_size]
         """
+
         T,B,C,H,W = states.shape
         ##### Tube masking
         # Might need to change some of this since original code assumes B,T,...
