@@ -13,7 +13,7 @@ eval_mpcs: 20
 quick_debug: false
 seed: 1
 load_checkpoint_path: null
-eval_only: false
+eval_only: true
 probe_mpc: false
 dataset_static_noise: 0.25
 dataset_structured_noise: false

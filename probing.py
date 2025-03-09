@@ -23,6 +23,12 @@ class ProbingConfig(ConfigBase):
     schedule: Optional[str] = None
     prober_arch: str = ""
 
+class ProbeResult(NamedTuple):
+    model: torch.nn.Module
+    average_eval_loss: float
+    eval_losses_per_step: List[float]
+    plots: List[Any]
+
 
 @torch.no_grad()
 def probe_enc_position_visualize(
@@ -206,13 +212,12 @@ def probe_enc_position(
 
     avg_loss = np.mean(eval_losses)
     unnormalized_avg_loss = dataset.unnormalize_mse(avg_loss)
-
-    return unnormalized_avg_loss
+    # TODO Add the plot somehow?
+    return ProbeResult(prober, unnormalized_avg_loss, eval_losses, [])
 
 
 def probe_action_position_vjepa(
     backbone: torch.nn.Module,
-    embedding: int,
     dataset,
     *,
     visualize: bool = False,
@@ -221,7 +226,7 @@ def probe_action_position_vjepa(
     config: ProbingConfig = ProbingConfig(),
     name_suffix: str = "",
     within_tubelet: bool = False,
-):
+) -> ProbeResult:
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
     num_timesteps = test_batch.states.shape[1]
@@ -229,12 +234,21 @@ def probe_action_position_vjepa(
     num_tubelets = num_timesteps // tubelet_size
 
     num_dots, action_dim = test_batch.actions[0, 0].shape
+    target_action = test_batch.actions
     # NOTE: Keep actions that correspond to within tubelets, so:
     # 0->1, 2->3, 4->5, ..., or between tubelets: 1->2, 3->4, 5->6, ...
     if within_tubelet: target_action = target_action[:, 0::2, :, :]
     else:              target_action = target_action[:, 1::2, :, :]
     
-    prober_output_shape = (num_dots, num_actions := target_action.shape[1])
+    # For each frame tubelet, we flatten it (7x7x64) into a vector of size 3136, then predict 1 action.
+    # In the between-tubelet case, we flatten and concat (3136x2) and predict 1 action.
+    prober_output_shape = (num_dots, action_dim)
+    with torch.no_grad():
+        e = backbone(test_batch.states.cuda())
+        e = e.view(batch_size, num_tubelets, -1)
+        # NOTE: Between tubelets, we have two frames, so we double the embedding dimension.
+        if within_tubelet: embedding = e.shape[-1]
+        else: embedding = 2 * e.shape[-1]
 
     prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
     prober = prober.cuda()
@@ -257,7 +271,7 @@ def probe_action_position_vjepa(
     ##### TRAINING #####
     for epoch in tqdm(range(config.epochs_enc)):
         for batch in dataset:
-            target_action = batch.actions.view(batch_size, num_tubelets, num_dots, action_dim // (tubelet_size // 2))
+            target_action = batch.actions
             if within_tubelet:  target_action = target_action[:, 0::2, :, :]
             else:               target_action = target_action[:, 1::2, :, :]
 
@@ -266,21 +280,79 @@ def probe_action_position_vjepa(
             e = e.view(batch_size, num_tubelets, -1)
             loss = 0.0
             if within_tubelet:
-                for i in range(0, num_timesteps, tubelet_size):
+                num_actions = num_tubelets
+                for i, _ in enumerate(range(0, num_timesteps, tubelet_size)):
                     # NOTE Take a tubelet and predict an action for each dot.
                     pred_action = prober(e[:, i])
                     loss += location_losses(pred_action, target_action[:, i])
-                loss /= num_tubelets
+                loss /= num_actions
             else: 
                 # NOTE Take pairs of tubelets and predict an action for each dot.
-                for i in range(1, num_timesteps, tubelet_size):
-                    # TODO 
-                    pred_action = prober(e[:, i], e[:, i-1])
+                num_actions = num_tubelets - 1
+                for i, _ in enumerate(range(1, num_timesteps-1, tubelet_size)):
+                    tubelet_flattened = torch.cat([e[:, i], e[:, i-1]], dim=1)
+                    pred_action = prober(tubelet_flattened)
                     loss += location_losses(pred_action, target_action[:, i])
-                loss /= num_tubelets
+                loss /= num_actions
+
             losses.append(loss.mean().item())
 
+            optimizer_pred_prober.zero_grad()
+            loss.mean().backward()
+            optimizer_pred_prober.step()
+
+            if wandb.run is not None and step % 100 == 0:
+                log_dict = {
+                    f"finetune_action{name_suffix}/loss": loss.mean().item(),
+                    f"finetune_action{name_suffix}/step": step,
+                    f"finetune_action{name_suffix}/sample_step": sample_step,
+                    f"finetune_action{name_suffix}/epoch": epoch,
+                }
+                per_dot_losses = loss
+                for i, val in enumerate(per_dot_losses):
+                    log_dict[f"finetune_action{name_suffix}/loss_dot_{i}"] = val.item()
+                wandb.log(log_dict)
+
+            step += 1
+            sample_step += batch.actions.shape[0]
             if quick_debug: break
+
+    ##### EVALUATION #####
+    with torch.no_grad():
+        eval_losses = []
+        for batch in dataset:
+            if within_tubelet:
+                target_action = batch.actions[:, 0::2, :, :]
+            else:
+                target_action = batch.actions[:, 1::2, :, :]
+
+            states = batch.states.permute(1, 0, 2, 3, 4)
+            e = backbone(states.cuda())
+            e = e.view(batch_size, num_tubelets, -1)
+            loss = 0.0
+            if within_tubelet:
+                num_actions = num_tubelets
+                for i, _ in enumerate(range(0, num_timesteps-1, tubelet_size)):
+                    pred_action = prober(e[:, i])
+                    loss += location_losses(pred_action, target_action[:, i])
+                loss /= num_actions
+            else:
+                num_actions = num_tubelets - 1
+                for i, _ in enumerate(range(1, num_timesteps-1, tubelet_size)):
+                    tubelet_flattened = torch.cat([e[:, i], e[:, i-1]], dim=1)
+                    pred_action = prober(tubelet_flattened)
+                    loss += location_losses(pred_action, target_action[:, i])
+                loss /= num_actions
+
+            eval_losses.append(loss.item())
+
+    # TODO Add visualization
+
+    avg_loss = np.mean(eval_losses)
+    unnormalized_avg_loss = dataset.unnormalize_mse(avg_loss)
+
+    return ProbeResult(prober, unnormalized_avg_loss, eval_losses, [])
+
 
 def probe_pred_position_visualize(
     model: torch.nn.Module,
@@ -355,13 +427,6 @@ def probe_pred_position_visualize(
                 alpha=0.5,
             )
     return fig
-
-
-class ProbeResult(NamedTuple):
-    model: torch.nn.Module
-    average_eval_loss: float
-    eval_losses_per_step: List[float]
-    plots: List[Any]
 
 
 def location_losses(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:

@@ -298,6 +298,26 @@ class Trainer:
         if not self.config.probing_cfg.full_finetune:
             self.pred_ms.eval()
 
+        log_dict = {
+            "epoch": self.epoch,
+            "sample_step": self.sample_step,
+        }
+
+        if self.config.model_type == ModelType.VJEPA:
+            for within_tubelet in [True, False]:
+                suffix = "_within_tubelet" if within_tubelet else "_between_tubelet"
+                probing_action_result = probing.probe_action_position_vjepa(
+                    backbone=self.pred_ms.backbone,
+                    dataset=self.val_ds,
+                    quick_debug=self.config.quick_debug,
+                    config=self.config.probing_cfg,
+                    within_tubelet=within_tubelet,
+                    visualize=True,
+                    name_suffix=f"_{self.epoch}{suffix}",
+                )
+                # TODO Make each fn return a ProbingResult and then log as per pred_position?
+                log_dict[f"avg_eval_action_loss{suffix}"] = probing_action_result.average_eval_loss
+
         probing_enc_result = probing.probe_enc_position(
             backbone=self.pred_ms.backbone,
             embedding=self.pred_ms.embedding,
@@ -308,13 +328,10 @@ class Trainer:
             model_type=self.config.model_type,
             visualize=self.config.model_type == ModelType.VJEPA
         )
+        
+        log_dict["avg_eval_enc_loss"] = probing_enc_result
+        log_dict["avg_eval_enc_loss_rmse"] = np.sqrt(probing_enc_result)
 
-        log_dict = {
-            "avg_eval_enc_loss": probing_enc_result,
-            "avg_eval_enc_loss_rmse": np.sqrt(probing_enc_result),
-            "epoch": self.epoch,
-            "sample_step": self.sample_step,
-        }
 
         if self.config.model_type != ModelType.VJEPA:
             # NOTE SAMI: VJEPA can't do this because our predictor is self-predictive and is not a dynamics model.
@@ -439,7 +456,7 @@ if __name__ == "__main__":
     # Non-multiprocessing version
     # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
     sys.argv[1:] = [
-        "--configs", '/users/sboughan/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
+        "--configs", '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
     ]
     cfg = TrainConfig.parse_from_command_line()
     main(cfg)
