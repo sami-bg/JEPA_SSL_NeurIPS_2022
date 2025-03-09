@@ -87,7 +87,7 @@ vjepa:
   epochs: 100
   base_lr: 0.2
   ema: [0.998, 1.0]
-  ipe: 10_000  # Same as dataset_size
+  ipe: 78  # Same as dataset_size / batch size
   ipe_scale: 1.25
   predictor_embed_dim: 32
   predictor_depth: 6
