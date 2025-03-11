@@ -1,0 +1,5 @@
+TODO:
+- check how and where sweeps are being saved
+- check and revise log_dict from validate() func
+- perhaps add minimum loss to log_dict in validate()
+- check the unnormalize_location vs. unnormalize_mse and see which we should use

@@ -2,12 +2,12 @@ model_type: VJEPA
 n_steps: 18
 val_n_steps: 18
 dataset_size: 10000
-dataset_noise: 0.0
+dataset_noise: 0.25
 val_dataset_size: 10000
 wandb: true
 run_name: null
 run_group: null
-output_path: null
+output_path: models/vjepa/changing_structured.(0.25)/
 safe_every_n_epochs: 10
 eval_mpcs: 20
 quick_debug: false
@@ -15,7 +15,7 @@ seed: 1
 load_checkpoint_path: null
 eval_only: false
 probe_mpc: false
-dataset_static_noise: 1.25
+dataset_static_noise: 0.0
 dataset_structured_noise: false
 dataset_structured_noise_path: /tmp/cifar
 dataset_batch_size: 128
@@ -79,10 +79,6 @@ simclr:
   channels: 1
 vjepa:
   arch: vit
-  action_dim: 2
-  predictor: rnn
-  rnn_layers: 1
-  rnn_burnin: 1
   masking_ratio: 0.7
   img_size: 28
   patch_size: 4
@@ -94,7 +90,7 @@ vjepa:
   ipe: 78  # Same as dataset_size / batch size
   ipe_scale: 1.25
   predictor_embed_dim: 32
-  predictor_depth: 6
+  predictor_depth: 3
   predictor_num_heads: 4
   predictor_mlp_ratio: 4
   predictor_qkv_bias: true
@@ -102,14 +98,14 @@ vjepa:
   predictor_attn_drop_rate: 0.0
   predictor_drop_path_rate: 0.0
   encoder_embed_dim: 64
-  encoder_depth: 12
+  encoder_depth: 6
   encoder_num_heads: 4
   encoder_mlp_ratio: 4
   encoder_qkv_bias: true
   encoder_drop_rate: 0.0
   encoder_attn_drop_rate: 0.0
   encoder_drop_path_rate: 0.0
-eval_at_the_end_only: true
+eval_at_the_end_only: false
 dataset_type: Single
 probing_cfg:
   full_finetune: false

@@ -14,6 +14,7 @@ import models
 @dataclass
 class VJEPAConfig(ConfigBase):
     arch: str = "vit"
+    # model_type: str = 'VJEPA'
     #### EMA
     ema: tuple[float, float] = (0.998, 1.0)
     ipe_scale: float = 1.25
@@ -37,7 +38,7 @@ class VJEPAConfig(ConfigBase):
 
     #### JEPA Predictor
     predictor_embed_dim: int = 32
-    predictor_depth: int = 6
+    predictor_depth: int = 4
     predictor_num_heads: int = 4
     predictor_mlp_ratio: float = 4.0
     predictor_qkv_bias: bool = True
@@ -48,7 +49,7 @@ class VJEPAConfig(ConfigBase):
 
     #### Encoder
     encoder_embed_dim: int = 64
-    encoder_depth: int = 12
+    encoder_depth: int = 6
     encoder_num_heads: int = 4
     encoder_mlp_ratio: float = 4.0
     encoder_qkv_bias: bool = True
@@ -58,6 +59,7 @@ class VJEPAConfig(ConfigBase):
     encoder_drop_path_rate: float = 0.0
     #### Misc
     rnn_burnin: int = 1
+
 
 @dataclass
 class LossInfo:

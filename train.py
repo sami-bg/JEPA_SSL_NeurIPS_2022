@@ -38,8 +38,8 @@ OmegaConf.register_new_resolver("eval", eval)
 @dataclass
 class TrainConfig(ConfigBase):
     model_type: ModelType = MISSING
-    n_steps: int = 17
-    val_n_steps: int = 17
+    n_steps: int = 18
+    val_n_steps: int = 18
     dataset_size: int = 10000
     dataset_noise: float = 0.0
     val_dataset_size: int = 10000
@@ -99,7 +99,7 @@ class Trainer:
                 group=config.run_group,
                 config=dataclasses.asdict(config),
             )
-
+        print(f'Config:\n{OmegaConf.to_yaml(config)}')
         seed_everything(config.seed)
 
         self.sample_step = 0
@@ -329,8 +329,8 @@ class Trainer:
             visualize=self.config.model_type == ModelType.VJEPA
         )
         
-        log_dict["avg_eval_enc_loss"] = probing_enc_result
-        log_dict["avg_eval_enc_loss_rmse"] = np.sqrt(probing_enc_result)
+        log_dict["avg_eval_enc_loss"] = probing_enc_result.average_eval_loss
+        log_dict["avg_eval_enc_loss_rmse"] = np.sqrt(probing_enc_result.average_eval_loss)
 
 
         if self.config.model_type != ModelType.VJEPA:
@@ -346,21 +346,21 @@ class Trainer:
                 config=self.config.probing_cfg,
                 name_suffix=f"_{self.epoch}",
             )
-            log_dict["avg_eval_loss"] = probing_result.average_eval_loss
-            log_dict["avg_eval_loss_rmse"] = np.sqrt(probing_result.average_eval_loss)
+            log_dict["avg_eval_rollout_loss"] = probing_result.average_eval_loss
+            log_dict["avg_eval_rollout_loss_rmse"] = np.sqrt(probing_result.average_eval_loss)
             for i in range(probing_result.eval_losses_per_step.shape[0]):
                 for j in range(probing_result.eval_losses_per_step.shape[1]):
                     log_dict[f"eval/loss_{i}_{j}"] = probing_result.eval_losses_per_step[
                         i, j
                     ].item()
-                    log_dict[f"eval/loss_{i}_{j}_rmse"] = np.sqrt(
+                    log_dict[f"eval/rollout_loss_{i}_{j}_rmse"] = np.sqrt(
                         probing_result.eval_losses_per_step[i, j].item()
                     )
             for j in range(probing_result.eval_losses_per_step.shape[1]):
-                log_dict[f"eval/loss_{j}"] = (
+                log_dict[f"eval/rollout_loss_{j}"] = (
                     probing_result.eval_losses_per_step[:, j].mean().item()
                 )
-                log_dict[f"eval/loss_{j}_rmse"] = np.sqrt(
+                log_dict[f"eval/rollout_loss_{j}_rmse"] = np.sqrt(
                     probing_result.eval_losses_per_step[:, j].mean().item()
                 )
 
@@ -388,7 +388,7 @@ class Trainer:
 
         self.pred_ms.train()
 
-        return probing_result
+        return log_dict
 
     def save_checkpoint(self):
         if self.config.output_path is not None:
@@ -417,46 +417,6 @@ def main(config: TrainConfig):
 
 
 if __name__ == "__main__":
-    import sys
-    import multiprocessing as mp
-    
-    # FIXED_UNIFORM_PATHS = [
-    #     '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.25).vjepa.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(0.5).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(1.5).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(2.5).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_fixed_uniform.(3).vicreg.best.yaml',
-    # ]
-
-    # CHANGING_UNIFORM_PATHS = [
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(0.5).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(1.5).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(2.5).vicreg.best.yaml',
-    #     # '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/sweep_changing_uniform.(3).vicreg.best.yaml',
-    # ]
-
-    # # Multiprocessing version
-    # # cfgs = []
-    # # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
-    # #     sys.argv[1:] = [
-    # #         "--configs", path
-    # #     ]
-    # #     mp.set_start_method('spawn', force=True)
-    # #     cfg = TrainConfig.parse_from_command_line()
-    # #     cfgs.append(cfg)
-    
-    # # with mp.Pool(processes=12) as pool:
-    # #     pool.map(main, cfgs)
-
-    # Non-multiprocessing version
-    # for path in [*FIXED_UNIFORM_PATHS, *CHANGING_UNIFORM_PATHS]:
-    sys.argv[1:] = [
-        "--configs", '/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/sweep_fixed_uniform.(0.25).vjepa.yaml'
-    ]
     cfg = TrainConfig.parse_from_command_line()
+    print(OmegaConf.to_yaml(cfg))
     main(cfg)

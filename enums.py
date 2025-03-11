@@ -1,4 +1,7 @@
 import enum
+from omegaconf import OmegaConf
+
+
 
 class ModelType(enum.Enum):
     VICReg = enum.auto()
