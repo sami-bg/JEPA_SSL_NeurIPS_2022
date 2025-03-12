@@ -83,6 +83,7 @@ def probe_enc_position(
     config: ProbingConfig = ProbingConfig(),
     name_suffix: str = "",
     model_type: ModelType,
+    probe_model: Optional[torch.nn.Module] = None,
 ):
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
@@ -107,6 +108,10 @@ def probe_enc_position(
     prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
     prober = prober.cuda()
 
+    if probe_model is not None:
+        prober = probe_model
+        prober = prober.cuda()
+
     if not config.full_finetune:
         optimizer_pred_prober = torch.optim.Adam(prober.parameters(), config.lr)
     else:
@@ -119,60 +124,60 @@ def probe_enc_position(
 
     if quick_debug:
         config.epochs_enc = 1
-
     step = 0
     sample_step = 0
-    ##### TRAINING #####    
-    for epoch in tqdm(range(config.epochs_enc)):
-        for batch in dataset:
-            target_loc = batch.locations[:, 0].cuda().float()
 
-            if model_type == ModelType.VJEPA:
-                # NOTE SAMI: For V-JEPA we re-shape the locations to be (batch_size, num_tubelets, num_dots, 4).
-                target_loc = batch.locations.view(batch_size, num_tubelets, num_dots, location_dim * tubelet_size)
-                states = batch.states.permute(1, 0, 2, 3, 4)
-                # NOTE SAMI: For V-JEPA, we encode the entire sequence and then predict
-                # the location of the dot on each tubelet. The encoded sequence e is of shape
-                # (batch_size, num_patches_flattened, embedding_dim). For video of 18 frames, 28x28 px, and 4x4 patch size,
-                # we end up with (9x7x7, embed_dim) = (128,441,64) in this case.
-                e = backbone(states.cuda())
-                # NOTE SAMI: Since e is flattened, we need to reshape it back to batch_size x num_tubelets x spatial_patches x embedding_dim
-                # so that we can apply the prober to tubelets of the entire frame.
-                e = e.view(batch_size, num_tubelets, -1)
-                # NOTE SAMI: Prober here should be Linear(in_features=3136, out_features=(num_dots, 4), bias=False)
-                loss = 0.0
-                # NOTE SAMI: Average loss over all the tubelets.
-                for i in range(num_tubelets):
-                    pred_loc = prober(e[:, i])
-                    loss += location_losses(pred_loc, target_loc[:, i])
-                loss /= num_tubelets
-            else:
-                e = backbone(batch.states[:, 0].cuda())
-                pred_loc = prober(e)
-                loss = location_losses(pred_loc, target_loc)
+    ##### TRAINING #####
+    if probe_model is None:
+        for epoch in tqdm(range(config.epochs_enc)):
+            for batch in dataset:
+                target_loc = batch.locations[:, 0].cuda().float()
+                if model_type == ModelType.VJEPA:
+                    # NOTE SAMI: For V-JEPA we re-shape the locations to be (batch_size, num_tubelets, num_dots, 4).
+                    target_loc = batch.locations.view(batch_size, num_tubelets, num_dots, location_dim * tubelet_size)
+                    states = batch.states.permute(1, 0, 2, 3, 4)
+                    # NOTE SAMI: For V-JEPA, we encode the entire sequence and then predict
+                    # the location of the dot on each tubelet. The encoded sequence e is of shape
+                    # (batch_size, num_patches_flattened, embedding_dim). For video of 18 frames, 28x28 px, and 4x4 patch size,
+                    # we end up with (9x7x7, embed_dim) = (128,441,64) in this case.
+                    e = backbone(states.cuda())
+                    # NOTE SAMI: Since e is flattened, we need to reshape it back to batch_size x num_tubelets x spatial_patches x embedding_dim
+                    # so that we can apply the prober to tubelets of the entire frame.
+                    e = e.view(batch_size, num_tubelets, -1)
+                    # NOTE SAMI: Prober here should be Linear(in_features=3136, out_features=(num_dots, 4), bias=False)
+                    loss = 0.0
+                    # NOTE SAMI: Average loss over all the tubelets.
+                    for i in range(num_tubelets):
+                        pred_loc = prober(e[:, i])
+                        loss += location_losses(pred_loc, target_loc[:, i])
+                    loss /= num_tubelets
+                else:
+                    e = backbone(batch.states[:, 0].cuda())
+                    pred_loc = prober(e)
+                    loss = location_losses(pred_loc, target_loc)
 
-            losses.append(loss.mean().item())
+                losses.append(loss.mean().item())
 
-            optimizer_pred_prober.zero_grad()
-            loss.mean().backward()
-            optimizer_pred_prober.step()
+                optimizer_pred_prober.zero_grad()
+                loss.mean().backward()
+                optimizer_pred_prober.step()
 
-            if wandb.run is not None and step % 100 == 0:
-                log_dict = {
-                    f"finetune_enc{name_suffix}/loss": loss.mean().item(),
-                    f"finetune_enc{name_suffix}/step": step,
-                    f"finetune_enc{name_suffix}/sample_step": sample_step,
-                    f"finetune_enc{name_suffix}/epoch": epoch,
-                }
-                per_dot_losses = loss
-                for i, val in enumerate(per_dot_losses):
-                    log_dict[f"finetune_enc{name_suffix}/loss_dot_{i}"] = val.item()
-                wandb.log(log_dict)
+                if wandb.run is not None and step % 100 == 0:
+                    log_dict = {
+                        f"finetune_enc{name_suffix}/loss": loss.mean().item(),
+                        f"finetune_enc{name_suffix}/step": step,
+                        f"finetune_enc{name_suffix}/sample_step": sample_step,
+                        f"finetune_enc{name_suffix}/epoch": epoch,
+                    }
+                    per_dot_losses = loss
+                    for i, val in enumerate(per_dot_losses):
+                        log_dict[f"finetune_enc{name_suffix}/loss_dot_{i}"] = val.item()
+                    wandb.log(log_dict)
 
-            step += 1
-            sample_step += batch.locations.shape[0]
-            if quick_debug:
-                break
+                step += 1
+                sample_step += batch.locations.shape[0]
+                if quick_debug:
+                    break
 
     ##### EVALUATION #####
     with torch.no_grad():
@@ -232,6 +237,7 @@ def probe_action_position_vjepa(
     config: ProbingConfig = ProbingConfig(),
     name_suffix: str = "",
     within_tubelet: bool = False,
+    probe_model: Optional[torch.nn.Module] = None,
 ) -> ProbeResult:
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
@@ -258,6 +264,10 @@ def probe_action_position_vjepa(
 
     prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
     prober = prober.cuda()
+
+    if probe_model is not None:
+        prober = probe_model
+        prober = prober.cuda()
 
     if not config.full_finetune:
         optimizer_pred_prober = torch.optim.Adam(prober.parameters(), config.lr)
@@ -456,6 +466,7 @@ def probe_pred_position(
     burn_in: int = 0,
     config: ProbingConfig = ProbingConfig(),
     name_suffix: str = "",
+    probe_model: Optional[torch.nn.Module] = None,
 ):
    
     # NOTE SAMI: Autoregressively rollout future states from first state and all actions
@@ -469,6 +480,10 @@ def probe_pred_position(
     prober_output_shape = test_batch.locations[0, 0].shape
     prober = Prober(embedding, config.prober_arch, output_shape=prober_output_shape)
     prober = prober.cuda()
+
+    if probe_model is not None:
+        prober = probe_model
+        prober = prober.cuda()
 
     if not config.full_finetune:
         optimizer_pred_prober = torch.optim.Adam(prober.parameters(), config.lr)

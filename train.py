@@ -52,6 +52,7 @@ class TrainConfig(ConfigBase):
     quick_debug: bool = False
     seed: int = 42
     load_checkpoint_path: Optional[str] = None
+    load_probing_checkpoint_path: Optional[str] = None
     eval_only: bool = False
     probe_mpc: bool = False
     dataset_static_noise: float = 0.0
@@ -302,7 +303,35 @@ class Trainer:
             "epoch": self.epoch,
             "sample_step": self.sample_step,
         }
+        save_dict = {
+            "epoch": self.epoch,
+            "sample_step": self.sample_step,
+            "probe_enc_model": None,
+            "probe_pred_model": None,
+            "probe_mpc_model": None,
+            "probe_action_model": None,
+        }
 
+        if self.config.load_probing_checkpoint_path is not None:
+            checkpoint = torch.load(self.config.load_probing_checkpoint_path)
+            save_dict["probe_enc_model"] = checkpoint["probe_enc_model"]
+            save_dict["probe_pred_model"] = checkpoint["probe_pred_model"]
+            save_dict["probe_mpc_model"] = checkpoint["probe_mpc_model"]
+            save_dict["probe_action_model"] = checkpoint["probe_action_model"]
+
+        probing_enc_result = probing.probe_enc_position(
+            backbone=self.pred_ms.backbone,
+            embedding=self.pred_ms.embedding,
+            dataset=self.val_ds,
+            quick_debug=self.config.quick_debug,
+            config=self.config.probing_cfg,
+            name_suffix=f"_{self.epoch}",
+            model_type=self.config.model_type,
+            visualize=self.config.model_type == ModelType.VJEPA,
+            probe_model=save_dict["probe_enc_model"]
+        )
+        save_dict["probe_enc_model"] = probing_enc_result.model
+       
         if self.config.model_type == ModelType.VJEPA:
             for within_tubelet in [True, False]:
                 suffix = "_within_tubelet" if within_tubelet else "_between_tubelet"
@@ -314,21 +343,13 @@ class Trainer:
                     within_tubelet=within_tubelet,
                     visualize=True,
                     name_suffix=f"_{self.epoch}{suffix}",
+                    probe_model=save_dict["probe_action_model"]
                 )
+                save_dict["probe_action_model"] = probing_action_result.model
                 # TODO Make each fn return a ProbingResult and then log as per pred_position?
                 log_dict[f"avg_eval_action_loss_unnormalized{suffix}"] = probing_action_result.average_eval_loss_unnormalized
                 log_dict[f"avg_eval_action_loss_normalized{suffix}"] = probing_action_result.average_eval_loss_normalized
 
-        probing_enc_result = probing.probe_enc_position(
-            backbone=self.pred_ms.backbone,
-            embedding=self.pred_ms.embedding,
-            dataset=self.val_ds,
-            quick_debug=self.config.quick_debug,
-            config=self.config.probing_cfg,
-            name_suffix=f"_{self.epoch}",
-            model_type=self.config.model_type,
-            visualize=self.config.model_type == ModelType.VJEPA
-        )
         
         log_dict["avg_eval_enc_loss_unnormalized"] = probing_enc_result.average_eval_loss_unnormalized
         log_dict["avg_eval_enc_loss_unnormalized_rmse"] = np.sqrt(probing_enc_result.average_eval_loss_unnormalized)
@@ -348,8 +369,9 @@ class Trainer:
                 burn_in=self.pred_ms.args.rnn_burnin,
                 config=self.config.probing_cfg,
                 name_suffix=f"_{self.epoch}",
+                probe_model=save_dict["probe_pred_model"]
             )
-
+            save_dict["probe_pred_model"] = probing_result.model
             log_dict["avg_eval_rollout_loss_unnormalized"] = probing_result.average_eval_loss_unnormalized
             log_dict["avg_eval_rollout_loss_unnormalized_rmse"] = np.sqrt(probing_result.average_eval_loss_unnormalized)
             log_dict["avg_eval_rollout_loss_normalized"] = probing_result.average_eval_loss_normalized
@@ -379,6 +401,7 @@ class Trainer:
                     prober=probing_result.model,
                     plan_size=self.config.val_n_steps,
                 )
+                save_dict["probe_mpc_model"] = probe_mpc_result.model
                 log_dict["average_mpc_mse"] = probe_mpc_result.average_diff
                 for i in range(len(probe_mpc_result.figures)):
                     log_dict[f"mpc_{i}"] = probe_mpc_result.figures[i]
@@ -394,6 +417,9 @@ class Trainer:
                 plt.close(v)
 
         self.pred_ms.train()
+        if self.config.output_path is not None:
+            os.makedirs(self.config.output_path, exist_ok=True)
+            torch.save(save_dict, os.path.join(self.config.output_path, f"probing_epoch={self.epoch}_sample_step={self.sample_step}.ckpt"))
 
         return log_dict
 
@@ -424,6 +450,10 @@ def main(config: TrainConfig):
 
 
 if __name__ == "__main__":
+    import sys
+    sys.argv[1:] = [
+        "--config", "/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml"
+    ]
     cfg = TrainConfig.parse_from_command_line()
     print(OmegaConf.to_yaml(cfg))
     main(cfg)
