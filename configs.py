@@ -3,7 +3,7 @@ import dataclasses
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, Tuple, Union, cast, List
-
+from pathlib import Path
 from omegaconf import OmegaConf
 
 DataClass = Any
@@ -231,7 +231,9 @@ def omegaconf_parse(cls):
 def omegaconf_parse_files_vals(cls, files_paths: List[str], dotlist: List[str]):
     configs = [OmegaConf.structured(cls)]
     for path in files_paths:
-        configs.append(OmegaConf.load(path))
+        cfg = OmegaConf.load(path)
+        cfg['cfg_name'] = Path(path).stem
+        configs.append(cfg)
     configs.append(OmegaConf.from_dotlist(dotlist))
     omega_config = OmegaConf.merge(*configs)
     res = cls.parse_from_dict(OmegaConf.to_container(omega_config))

@@ -13,7 +13,7 @@ eval_mpcs: 20
 quick_debug: false
 seed: 1
 load_checkpoint_path: results/lr_sweep/sweep_fixed_structured.(0.50).vjepa/lr_0.03808453/epoch=100_sample_step=998400.ckpt
-load_probing_checkpoint_path: results/lr_sweep/sweep_fixed_structured.(0.50).vjepa/lr_0.03808453/probing_epoch=100_sample_step=998400.pth
+load_probing_checkpoint_path: null
 eval_only: true
 probe_mpc: false
 dataset_static_noise: 0.50

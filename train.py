@@ -68,7 +68,7 @@ class TrainConfig(ConfigBase):
     vjepa: VJEPAConfig = field(default_factory=VJEPAConfig)
     eval_at_the_end_only: bool = False
     dataset_type: DatasetType = DatasetType.Single
-
+    cfg_name: str = ""
     probing_cfg: probing.ProbingConfig = field(default_factory=probing.ProbingConfig)
 
 
@@ -314,10 +314,13 @@ class Trainer:
 
         if self.config.load_probing_checkpoint_path is not None:
             checkpoint = torch.load(self.config.load_probing_checkpoint_path)
-            save_dict["probe_enc_model"] = checkpoint["probe_enc_model"]
-            save_dict["probe_pred_model"] = checkpoint["probe_pred_model"]
-            save_dict["probe_mpc_model"] = checkpoint["probe_mpc_model"]
-            save_dict["probe_action_model"] = checkpoint["probe_action_model"]
+            save_dict["probe_enc_model"] = checkpoint.get("probe_enc_model", None)
+            save_dict["probe_pred_model"] = checkpoint.get("probe_pred_model", None)
+            save_dict["probe_mpc_model"] = checkpoint.get("probe_mpc_model", None)
+            save_dict[f"probe_action_model_within_tubelet"] = checkpoint.get("probe_action_model_within_tubelet", None)
+            save_dict[f"probe_action_model_between_tubelet"] = checkpoint.get("probe_action_model_between_tubelet", None)
+            if None in save_dict.values():
+                print(f"WARNING: Some models were not loaded from checkpoint: {checkpoint.keys()}, {save_dict=}")
 
         probing_enc_result = probing.probe_enc_position(
             backbone=self.pred_ms.backbone,
@@ -328,7 +331,8 @@ class Trainer:
             name_suffix=f"_{self.epoch}",
             model_type=self.config.model_type,
             visualize=self.config.model_type == ModelType.VJEPA,
-            probe_model=save_dict["probe_enc_model"]
+            probe_model=save_dict["probe_enc_model"],
+            cfg_name=self.config.cfg_name
         )
         save_dict["probe_enc_model"] = probing_enc_result.model
        
@@ -343,9 +347,9 @@ class Trainer:
                     within_tubelet=within_tubelet,
                     visualize=True,
                     name_suffix=f"_{self.epoch}{suffix}",
-                    probe_model=save_dict["probe_action_model"]
+                    probe_model=save_dict[f"probe_action_model{suffix}"]
                 )
-                save_dict["probe_action_model"] = probing_action_result.model
+                save_dict[f"probe_action_model{suffix}"] = probing_action_result.model
                 # TODO Make each fn return a ProbingResult and then log as per pred_position?
                 log_dict[f"avg_eval_action_loss_unnormalized{suffix}"] = probing_action_result.average_eval_loss_unnormalized
                 log_dict[f"avg_eval_action_loss_normalized{suffix}"] = probing_action_result.average_eval_loss_normalized
@@ -452,7 +456,7 @@ def main(config: TrainConfig):
 if __name__ == "__main__":
     import sys
     sys.argv[1:] = [
-        "--config", "/home/sboughanem/ssl/JEPA_SSL_NeurIPS_2022/reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml"
+        "--config", "reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml"
     ]
     cfg = TrainConfig.parse_from_command_line()
     print(OmegaConf.to_yaml(cfg))

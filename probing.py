@@ -33,7 +33,7 @@ class ProbeResult(NamedTuple):
 
 @torch.no_grad()
 def probe_enc_position_visualize(
-    states, pred_loc, target_loc
+    states, pred_loc, target_loc, dataset
 ):
 
     plt.figure(dpi=200)
@@ -47,8 +47,9 @@ def probe_enc_position_visualize(
             plt.imshow(states[idx, 0, 0].cpu(), origin="lower")
             plt.axis("off")
 
-            pred_x_loc = pred_loc[idx][0,0]
-            pred_y_loc = pred_loc[idx][0,1]
+            pred_x_loc = dataset.unnormalize_location(pred_loc[idx][0,0])
+            pred_y_loc = dataset.unnormalize_location(pred_loc[idx][0,1])
+
             plt.plot(
                 pred_x_loc.item(),
                 pred_y_loc.item(),
@@ -59,8 +60,8 @@ def probe_enc_position_visualize(
                 alpha=0.5,
             )
 
-            target_x_loc = target_loc[idx][0,0]
-            target_y_loc = target_loc[idx][0,1]
+            target_x_loc = dataset.unnormalize_location(target_loc[idx][0,0])
+            target_y_loc = dataset.unnormalize_location(target_loc[idx][0,1])
             plt.plot(
                 target_x_loc.item(),
                 target_y_loc.item(),
@@ -84,7 +85,17 @@ def probe_enc_position(
     name_suffix: str = "",
     model_type: ModelType,
     probe_model: Optional[torch.nn.Module] = None,
+    cfg_name: str = "",  # Just for visualization name
 ):
+    if quick_debug:
+        # Iterate thru the dataset and try to render the fucking image with the ground truths
+        for i, batch in enumerate(dataset):
+            if i > 10: break
+            plt.figure(dpi=200)
+            plt.imshow(batch.states[0, 0].cpu(), origin="lower")
+            plt.scatter(batch.locations[0, 0, 0].cpu(), batch.locations[0, 0, 1].cpu(), color="red", marker="x")
+            plt.show()
+
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
     num_timesteps = test_batch.states.shape[1]
@@ -104,7 +115,7 @@ def probe_enc_position(
             embedding = e.shape[-1]# 3136
     else:
         prober_output_shape = test_batch.locations[0, 0].shape
-    
+
     prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
     prober = prober.cuda()
 
@@ -210,14 +221,14 @@ def probe_enc_position(
         plt.show()
         # NOTE SAMI: Uses the fact that python still has access to the variables from the previous loop.
         probe_enc_position_visualize(
-            batch.states, pred_loc, target_frame_loc)
+            batch.states, pred_loc, target_frame_loc, dataset)
         plt.show()
         if not os.path.exists("visualizations"):
             os.makedirs("visualizations")
-        plt.savefig(f"visualizations/enc_position_visualization_{name_suffix}.png")
+        plt.savefig(f"visualizations/enc_position_visualization_{cfg_name}.png")
 
     avg_loss = np.mean(eval_losses)
-    # TODO Add the plot somehow?
+
     return ProbeResult(
         prober,
         average_eval_loss_unnormalized=dataset.unnormalize_mse(avg_loss),
@@ -363,6 +374,7 @@ def probe_action_position_vjepa(
             eval_losses.append(loss.item())
 
     # TODO Add visualization
+    
 
     avg_loss = np.mean(eval_losses)
 
