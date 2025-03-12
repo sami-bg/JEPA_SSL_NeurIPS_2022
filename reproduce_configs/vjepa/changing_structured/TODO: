@@ -1,5 +1,7 @@
 TODO:
-- check how and where sweeps are being saved
+[x]- check how and where sweeps are being saved
 - check and revise log_dict from validate() func
 - perhaps add minimum loss to log_dict in validate()
-- check the unnormalize_location vs. unnormalize_mse and see which we should use
+[x]- check the unnormalize_location vs. unnormalize_mse and see which we should use
+[ ]- fix visualizations and maybe make some way to save the values as you are running a validation
+[ ]-

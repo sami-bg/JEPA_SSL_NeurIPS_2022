@@ -25,7 +25,8 @@ class ProbingConfig(ConfigBase):
 
 class ProbeResult(NamedTuple):
     model: torch.nn.Module
-    average_eval_loss: float
+    average_eval_loss_unnormalized: float
+    average_eval_loss_normalized: float
     eval_losses_per_step: List[float]
     plots: List[Any]
 
@@ -211,9 +212,14 @@ def probe_enc_position(
         plt.savefig(f"visualizations/enc_position_visualization_{name_suffix}.png")
 
     avg_loss = np.mean(eval_losses)
-    unnormalized_avg_loss = dataset.unnormalize_mse(avg_loss)
     # TODO Add the plot somehow?
-    return ProbeResult(prober, unnormalized_avg_loss, eval_losses, [])
+    return ProbeResult(
+        prober,
+        average_eval_loss_unnormalized=dataset.unnormalize_mse(avg_loss),
+        average_eval_loss_normalized=dataset.normalize_mse(avg_loss),
+        eval_losses_per_step=eval_losses,
+        plots=[],
+    )
 
 
 def probe_action_position_vjepa(
@@ -349,9 +355,14 @@ def probe_action_position_vjepa(
     # TODO Add visualization
 
     avg_loss = np.mean(eval_losses)
-    unnormalized_avg_loss = dataset.unnormalize_mse(avg_loss)
 
-    return ProbeResult(prober, unnormalized_avg_loss, eval_losses, [])
+    return ProbeResult(
+        prober,
+        average_eval_loss_unnormalized=dataset.unnormalize_mse(avg_loss),
+        average_eval_loss_normalized=dataset.normalize_mse(avg_loss),
+        eval_losses_per_step=eval_losses,
+        plots=[],
+    )
 
 
 def probe_pred_position_visualize(
@@ -562,9 +573,10 @@ def probe_pred_position(
             if quick_debug:
                 break
 
+    
         losses_t = torch.stack(eval_losses, dim=0).mean(dim=0)
-        losses_t = dataset.unnormalize_mse(losses_t)
-
+        unnormalized_losses_t = dataset.unnormalize_mse(losses_t)
+        normalized_losses_t = dataset.normalize_mse(losses_t)
     if visualize:
         fig = probe_pred_position_visualize(
             backbone,
@@ -577,7 +589,12 @@ def probe_pred_position(
     else:
         fig = None
 
-    return ProbeResult(prober, losses_t.mean().item(), losses_t, [fig])
+    return ProbeResult(prober,
+        average_eval_loss_unnormalized=unnormalized_losses_t.mean().item(),
+        average_eval_loss_normalized=normalized_losses_t.mean().item(),
+        eval_losses_per_step=losses_t,
+        plots=[fig],
+    )
 
 
 class ProbeMPCResult(NamedTuple):

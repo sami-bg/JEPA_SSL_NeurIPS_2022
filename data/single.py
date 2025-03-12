@@ -272,6 +272,14 @@ class ContinuousMotionDataset:
             )
 
     @torch.no_grad()
+    def normalize_mse(self, mse):
+        if self.normalize:
+            return mse
+        else:
+            return mse / ((np.sqrt(1 / 12) * (self.img_size - 1 - 2 * self.padding)) ** 2)
+
+
+    @torch.no_grad()
     def unnormalize_location(self, locations):
         if not self.normalize:
             return locations

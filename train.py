@@ -316,7 +316,8 @@ class Trainer:
                     name_suffix=f"_{self.epoch}{suffix}",
                 )
                 # TODO Make each fn return a ProbingResult and then log as per pred_position?
-                log_dict[f"avg_eval_action_loss{suffix}"] = probing_action_result.average_eval_loss
+                log_dict[f"avg_eval_action_loss_unnormalized{suffix}"] = probing_action_result.average_eval_loss_unnormalized
+                log_dict[f"avg_eval_action_loss_normalized{suffix}"] = probing_action_result.average_eval_loss_normalized
 
         probing_enc_result = probing.probe_enc_position(
             backbone=self.pred_ms.backbone,
@@ -329,8 +330,10 @@ class Trainer:
             visualize=self.config.model_type == ModelType.VJEPA
         )
         
-        log_dict["avg_eval_enc_loss"] = probing_enc_result.average_eval_loss
-        log_dict["avg_eval_enc_loss_rmse"] = np.sqrt(probing_enc_result.average_eval_loss)
+        log_dict["avg_eval_enc_loss_unnormalized"] = probing_enc_result.average_eval_loss_unnormalized
+        log_dict["avg_eval_enc_loss_unnormalized_rmse"] = np.sqrt(probing_enc_result.average_eval_loss_unnormalized)
+        log_dict["avg_eval_enc_loss_normalized"] = probing_enc_result.average_eval_loss_normalized
+        log_dict["avg_eval_enc_loss_normalized_rmse"] = np.sqrt(probing_enc_result.average_eval_loss_normalized)
 
 
         if self.config.model_type != ModelType.VJEPA:
@@ -346,8 +349,12 @@ class Trainer:
                 config=self.config.probing_cfg,
                 name_suffix=f"_{self.epoch}",
             )
-            log_dict["avg_eval_rollout_loss"] = probing_result.average_eval_loss
-            log_dict["avg_eval_rollout_loss_rmse"] = np.sqrt(probing_result.average_eval_loss)
+
+            log_dict["avg_eval_rollout_loss_unnormalized"] = probing_result.average_eval_loss_unnormalized
+            log_dict["avg_eval_rollout_loss_unnormalized_rmse"] = np.sqrt(probing_result.average_eval_loss_unnormalized)
+            log_dict["avg_eval_rollout_loss_normalized"] = probing_result.average_eval_loss_normalized
+            log_dict["avg_eval_rollout_loss_normalized_rmse"] = np.sqrt(probing_result.average_eval_loss_normalized)
+
             for i in range(probing_result.eval_losses_per_step.shape[0]):
                 for j in range(probing_result.eval_losses_per_step.shape[1]):
                     log_dict[f"eval/loss_{i}_{j}"] = probing_result.eval_losses_per_step[
