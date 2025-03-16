@@ -16,7 +16,7 @@ load_checkpoint_path: null
 eval_only: false
 probe_mpc: false
 dataset_static_noise: 1.0
-dataset_structured_noise: false
+dataset_structured_noise: true
 dataset_structured_noise_path: /tmp/cifar
 dataset_batch_size: 128
 dataset_static_noise_speed: 0.0

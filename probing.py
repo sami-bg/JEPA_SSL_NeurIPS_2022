@@ -37,14 +37,14 @@ def probe_enc_position_visualize(
 ):
 
     plt.figure(dpi=200)
-    pidx = 1
+    pidx = 1 
     for row in range(5):
         for col in range(5):
             plt.subplot(5, 5, pidx)
             pidx += 1
-            idx = random.randint(0, states.shape[0] - 1)
-
-            plt.imshow(states[idx, 0, 0].cpu(), origin="lower")
+            idx = pidx
+            # We should always take the 2nd to last frame for visualization because this is from shadowed scope
+            plt.imshow(states[idx, -2, 0].cpu(), origin="lower")
             plt.axis("off")
 
             pred_x_loc = dataset.unnormalize_location(pred_loc[idx][0,0])
@@ -87,14 +87,18 @@ def probe_enc_position(
     probe_model: Optional[torch.nn.Module] = None,
     cfg_name: str = "",  # Just for visualization name
 ):
+    sf = plt.savefig
     if quick_debug:
+        pass
         # Iterate thru the dataset and try to render the fucking image with the ground truths
-        for i, batch in enumerate(dataset):
-            if i > 10: break
-            plt.figure(dpi=200)
-            plt.imshow(batch.states[0, 0].cpu(), origin="lower")
-            plt.scatter(batch.locations[0, 0, 0].cpu(), batch.locations[0, 0, 1].cpu(), color="red", marker="x")
-            plt.show()
+        # for i, batch in enumerate(dataset):
+        #     if i > 10: break
+        #     plt.figure(dpi=200)
+        #     plt.imshow(batch.states[0, 0, 0].cpu(), origin="lower")
+        #     location = batch.locations[0,0,0].cpu()
+        #     plt.scatter(*dataset.unnormalize_location(location), color="red", marker="x")
+        #     plt.show()
+        #     sf(f"visualizations/test_{i}_enc_position_visualization_{cfg_name}.png")
 
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
@@ -225,7 +229,11 @@ def probe_enc_position(
         plt.show()
         if not os.path.exists("visualizations"):
             os.makedirs("visualizations")
-        plt.savefig(f"visualizations/enc_position_visualization_{cfg_name}.png")
+        if not os.path.exists(os.path.join("visualizations", cfg_name, 'enc_position')):
+            os.makedirs(os.path.join("visualizations", cfg_name, 'enc_position'))
+
+        plt.title(f"Loss: {losses[-1]:.2f} - {cfg_name}")
+        plt.savefig(os.path.join("visualizations", cfg_name, 'enc_position', f"vis_loss_{losses[-1]:.2f}.png"))
 
     avg_loss = np.mean(eval_losses)
 
