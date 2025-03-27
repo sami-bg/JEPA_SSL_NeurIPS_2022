@@ -24,6 +24,7 @@ class VJEPAConfig(ConfigBase):
     img_size: int = 28
     patch_size: int = 4
     num_frames: int = 18
+    tubelet_size: int = 2
     channels: int = 1
 
     #### Optim
@@ -83,6 +84,7 @@ class VJEPA(torch.nn.Module):
             backbone_width_factor=1,
             channels=args.channels,
             **{
+                "tubelet_size": args.tubelet_size,
                 "encoder_embed_dim": args.encoder_embed_dim,
                 "encoder_depth": args.encoder_depth,
                 "encoder_num_heads": args.encoder_num_heads,
@@ -104,6 +106,7 @@ class VJEPA(torch.nn.Module):
                           for i in range(int(ipe*num_epochs*ipe_scale)+1))
         self.ema_backbone = copy.deepcopy(self.backbone)
         self.vit_predictor = models.VisionTransformerPredictor(
+            tubelet_size=args.tubelet_size,
             img_size=args.img_size,
             patch_size=args.patch_size,
             num_frames=args.num_frames,

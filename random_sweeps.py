@@ -15,6 +15,7 @@ def parse_args():
     parser.add_argument("--min_lr_exp", type=float, default=-2, help="Minimum learning rate exponent (10^x)")
     parser.add_argument("--max_lr_exp", type=float, default=0, help="Maximum learning rate exponent (10^x)")
     parser.add_argument("--output_dir", type=str, default="results/lr_sweep", help="Base output directory")
+    parser.add_argument("--tubelet_size", type=int, default=2, help="Tubelet size")
     return parser.parse_args()
 
 def generate_random_lr(min_exp, max_exp):
@@ -73,7 +74,7 @@ def main():
         os.makedirs(trial_output_dir, exist_ok=True)
         
         # Construct run name for wandb
-        run_name = f"{config_basename}_lr_{lr:.8f}"
+        run_name = f"{config_basename}_lr_{lr:.8f}_tubelet-size{args.tubelet_size}"
 
         # Build the command
         cmd = [
@@ -83,7 +84,8 @@ def main():
             f"wandb=True",
             f"output_path={trial_output_dir}",
             f"model_type={model_type}",
-            f"{model_type.lower()}.base_lr={lr}",
+            f"{model_type.lower()}.base_lr={lr}", # TODO Add tubelet size override option 
+            f"{model_type.lower()}.tubelet_size={args.tubelet_size}"
             f"run_name={run_name}",
             f"run_group={run_group}"
         ]

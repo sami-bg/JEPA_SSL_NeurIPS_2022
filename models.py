@@ -424,6 +424,7 @@ def build_backbone(
             img_size=28,
             patch_size=4,
             num_frames=18,
+            tubelet_size=kwargs['tubelet_size'],
             embed_dim=kwargs['encoder_embed_dim'],
             depth=kwargs['encoder_depth'],
             num_heads=kwargs['encoder_num_heads'],

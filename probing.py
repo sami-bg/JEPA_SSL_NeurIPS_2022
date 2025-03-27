@@ -78,6 +78,7 @@ def probe_enc_position(
     embedding: int,
     dataset,
     *,
+    tubelet_size: int = 2,
     visualize: bool = False,
     prober_arch: str = "",
     quick_debug: bool = False,
@@ -103,7 +104,6 @@ def probe_enc_position(
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
     num_timesteps = test_batch.states.shape[1]
-    tubelet_size = 2
     num_tubelets = num_timesteps // tubelet_size
     if model_type == ModelType.VJEPA:
         num_dots, location_dim = test_batch.locations[0, 0].shape
@@ -250,6 +250,7 @@ def probe_action_position_vjepa(
     backbone: torch.nn.Module,
     dataset,
     *,
+    tubelet_size: int = 2,
     visualize: bool = False,
     prober_arch: str = "",
     quick_debug: bool = False,
@@ -261,7 +262,6 @@ def probe_action_position_vjepa(
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
     num_timesteps = test_batch.states.shape[1]
-    tubelet_size = 2
     num_tubelets = num_timesteps // tubelet_size
 
     num_dots, action_dim = test_batch.actions[0, 0].shape

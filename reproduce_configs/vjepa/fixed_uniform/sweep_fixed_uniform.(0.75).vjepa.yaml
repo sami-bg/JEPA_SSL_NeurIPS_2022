@@ -82,6 +82,7 @@ vjepa:
   masking_ratio: 0.7
   img_size: 28
   patch_size: 4
+  tubelet_size: 2
   num_frames: 18
   channels: 1
   epochs: 100
