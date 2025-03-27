@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("--max_lr_exp", type=float, default=-2.5, help="Maximum learning rate exponent (10^x)")
     parser.add_argument("--output_dir", type=str, default="results/lr_sweep", help="Base output directory")
     parser.add_argument("--tubelet_size", type=int, default=2, help="Tubelet size")
+    parser.add_argument("--quick_debug", action="store_true", help="Quick debug mode")
     return parser.parse_args()
 
 def generate_random_lr(min_exp, max_exp):
@@ -87,7 +88,8 @@ def main():
             f"{model_type.lower()}.base_lr={lr}", # TODO Add tubelet size override option 
             f"{model_type.lower()}.tubelet_size={args.tubelet_size}",
             f"run_name={run_name}",
-            f"run_group={run_group}"
+            f"run_group={run_group}",
+            f"quick_debug={str(args.quick_debug).lower()}"
         ]
         
         print(f"\nTrial {trial+1}/{args.num_trials}: Running with learning rate {lr:.8f}")
