@@ -7,7 +7,7 @@ val_dataset_size: 10000
 wandb: true
 run_name: null
 run_group: null
-output_path: models/vjepa/fixed_uniform.(1.5)/
+output_path: models/vjepa/changing_uniform.(1.5)/
 safe_every_n_epochs: 10
 eval_mpcs: 20
 quick_debug: false

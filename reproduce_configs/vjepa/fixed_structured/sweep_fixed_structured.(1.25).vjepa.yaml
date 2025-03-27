@@ -7,7 +7,7 @@ val_dataset_size: 10000
 wandb: true
 run_name: null
 run_group: null
-output_path: models/vjepa/fixed_uniform.(1.25)/
+output_path: models/vjepa/fixed_structured.(1.25)/
 safe_every_n_epochs: 10
 eval_mpcs: 20
 quick_debug: false
@@ -79,10 +79,6 @@ simclr:
   channels: 1
 vjepa:
   arch: vit
-  action_dim: 2
-  predictor: rnn
-  rnn_layers: 1
-  rnn_burnin: 1
   masking_ratio: 0.7
   img_size: 28
   patch_size: 4

@@ -106,7 +106,7 @@ vjepa:
   encoder_drop_rate: 0.0
   encoder_attn_drop_rate: 0.0
   encoder_drop_path_rate: 0.0
-eval_at_the_end_only: false
+eval_at_the_end_only: true
 dataset_type: Single
 probing_cfg:
   full_finetune: false
