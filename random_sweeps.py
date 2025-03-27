@@ -85,7 +85,7 @@ def main():
             f"output_path={trial_output_dir}",
             f"model_type={model_type}",
             f"{model_type.lower()}.base_lr={lr}", # TODO Add tubelet size override option 
-            f"{model_type.lower()}.tubelet_size={args.tubelet_size}"
+            f"{model_type.lower()}.tubelet_size={args.tubelet_size}",
             f"run_name={run_name}",
             f"run_group={run_group}"
         ]
