@@ -12,8 +12,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Run training with different learning rates")
     parser.add_argument("--config", type=str, required=True, help="Path to the config file")
     parser.add_argument("--num_trials", type=int, default=5, help="Number of random learning rates to try")
-    parser.add_argument("--min_lr_exp", type=float, default=-2, help="Minimum learning rate exponent (10^x)")
-    parser.add_argument("--max_lr_exp", type=float, default=0, help="Maximum learning rate exponent (10^x)")
+    parser.add_argument("--min_lr_exp", type=float, default=-3, help="Minimum learning rate exponent (10^x)")
+    parser.add_argument("--max_lr_exp", type=float, default=-2.5, help="Maximum learning rate exponent (10^x)")
     parser.add_argument("--output_dir", type=str, default="results/lr_sweep", help="Base output directory")
     return parser.parse_args()
 

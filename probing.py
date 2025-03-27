@@ -155,7 +155,11 @@ def probe_enc_position(
                     # the location of the dot on each tubelet. The encoded sequence e is of shape
                     # (batch_size, num_patches_flattened, embedding_dim). For video of 18 frames, 28x28 px, and 4x4 patch size,
                     # we end up with (9x7x7, embed_dim) = (128,441,64) in this case.
-                    e = backbone(states.cuda())
+                    if not config.full_finetune:
+                        with torch.no_grad():
+                            e = backbone(states.cuda())
+                    else:
+                        e = backbone(states.cuda())
                     # NOTE SAMI: Since e is flattened, we need to reshape it back to batch_size x num_tubelets x spatial_patches x embedding_dim
                     # so that we can apply the prober to tubelets of the entire frame.
                     e = e.view(batch_size, num_tubelets, -1)
@@ -167,7 +171,11 @@ def probe_enc_position(
                         loss += location_losses(pred_loc, target_loc[:, i])
                     loss /= num_tubelets
                 else:
-                    e = backbone(batch.states[:, 0].cuda())
+                    if not config.full_finetune:
+                        with torch.no_grad():
+                            e = backbone(batch.states[:, 0].cuda())
+                    else:
+                        e = backbone(batch.states[:, 0].cuda())
                     pred_loc = prober(e)
                     loss = location_losses(pred_loc, target_loc)
 
@@ -311,7 +319,12 @@ def probe_action_position_vjepa(
             else:               target_action = target_action[:, 1::2, :, :]
 
             states = batch.states.permute(1, 0, 2, 3, 4)
-            e = backbone(states.cuda())
+            if not config.full_finetune:
+                with torch.no_grad():
+                    e = backbone(states.cuda())
+            else:
+                e = backbone(states.cuda())
+
             e = e.view(batch_size, num_tubelets, -1)
             loss = 0.0
             if within_tubelet:

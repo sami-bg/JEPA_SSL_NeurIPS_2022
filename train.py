@@ -309,7 +309,8 @@ class Trainer:
             "probe_enc_model": None,
             "probe_pred_model": None,
             "probe_mpc_model": None,
-            "probe_action_model": None,
+            "probe_action_model_within_tubelet": None,
+            "probe_action_model_between_tubelet": None,
         }
 
         if self.config.load_probing_checkpoint_path is not None:
@@ -335,7 +336,7 @@ class Trainer:
             cfg_name=self.config.cfg_name
         )
         save_dict["probe_enc_model"] = probing_enc_result.model
-       
+
         if self.config.model_type == ModelType.VJEPA:
             for within_tubelet in [True, False]:
                 suffix = "_within_tubelet" if within_tubelet else "_between_tubelet"
@@ -454,10 +455,10 @@ def main(config: TrainConfig):
 
 
 if __name__ == "__main__":
-    import sys
-    sys.argv[1:] = [
-        "--config", "reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml"
-    ]
+    # import sys
+    # sys.argv[1:] = [
+    #     "--config", "reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml"
+    # ]
     cfg = TrainConfig.parse_from_command_line()
     print(OmegaConf.to_yaml(cfg))
     main(cfg)

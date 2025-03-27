@@ -25,7 +25,7 @@ class ContinuousMotionDataset:
         noise: float = 0.0,
         static_noise: float = 0.0,
         structured_noise: bool = False,
-        structured_dataset_path: Optional[str] = "/tmp/cifar",
+        structured_dataset_path: Optional[str] = "/users/sboughan/scratch/ssl/cifar",
         static_noise_speed: float = 0.0,
         img_size: int = 28,
         normalize: bool = False,
@@ -50,23 +50,24 @@ class ContinuousMotionDataset:
                 root=structured_dataset_path,
                 train=train,
                 download=True,
-                transform=transforms.Compose(
-                    [
-                        transforms.Grayscale(),
-                        transforms.ToTensor(),
-                    ]
-                ),
+                transform=transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]),
             )
-            self.loader = torch.utils.data.DataLoader(
-                self.structured_dataset,
-                batch_size=self.batch_size,
-                num_workers=4,
-                shuffle=True,
-                drop_last=True,
-                pin_memory=False,
-                prefetch_factor=2,
+            
+            # Pre-load and cache ALL images in VRAM (only ~180MB)
+            all_images = []
+            temp_loader = torch.utils.data.DataLoader(
+                self.structured_dataset, 
+                batch_size=1000,  # Load in large batches
+                num_workers=0     # No workers needed for one-time load
             )
-            self.loader_it = iter(self.loader)
+            for images, _ in temp_loader:
+                # Process to 28x28 and move to GPU
+                images = images[:, :, :28, :28].to(self.device)
+                all_images.append(images)
+            
+            # Concatenate all batches into one tensor in VRAM
+            self.cached_images = torch.cat(all_images, 0)
+            self.num_images = self.cached_images.shape[0]
 
         self.normalize = False
 
@@ -117,15 +118,9 @@ class ContinuousMotionDataset:
         return location
 
     def get_images_for_overlay(self):
-        try:
-            batch = next(self.loader_it)
-        except StopIteration:
-            self.loader_it = iter(self.loader)
-            batch = next(self.loader_it)
-
-        batch = batch[0][:, :, :28, :28]  # crop from 32 by 32 to 28 by 28
-        # batch /= batch.max(dim=0).values asdf
-        return batch.to(self.device)
+        # Randomly sample from pre-cached images
+        indices = torch.randint(0, self.num_images, (self.batch_size,), device=self.device)
+        return self.cached_images[indices]
 
     def generate_static_overlay(
         self,
@@ -301,3 +296,11 @@ class DeterministicMotionDataset(ContinuousMotionDataset):
         )
         actions = vec * step_sizes
         return actions
+
+if __name__ == "__main__":
+    dataset = ContinuousMotionDataset(size=1000, batch_size=10, n_steps=2, concentration=0.2, max_step=4.0, std=1.3, noise=0.0, static_noise=0.0, structured_noise=False, structured_dataset_path="users/sboughan/scratch/ssl/cifar", static_noise_speed=0.0, img_size=28, normalize=False, device=torch.device("cpu"), train=True)
+    sample = dataset[0]
+    print(sample.states.shape)
+    print(sample.locations.shape)
+    print(sample.actions.shape)
+    torchvision.datasets.CIFAR10(root="/users/sboughan/scratch/ssl/cifar", train=True, download=True, transform=transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]))
