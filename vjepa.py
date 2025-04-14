@@ -60,6 +60,8 @@ class VJEPAConfig(ConfigBase):
     encoder_drop_path_rate: float = 0.0
     #### Misc
     rnn_burnin: int = 1
+    temporal_inconsistency_enabled: bool = True
+    temporal_inconsistency_coeff: float = 1.0
 
 
 @dataclass
@@ -150,8 +152,13 @@ class VJEPA(torch.nn.Module):
     def temporal_inconsistency_loss(self, patches):
         loss = 0.
         # NOTE Need to do some arithmetic here to take one patch across all frames
-        for i in range(patches.shape[0]): loss += torch.cosine_similarity(...).mean()
-        return self.args.temporal_inconsistency_coeff * loss
+        # NOTE If tubelet size is 2, num_frames is 18, and I have 36 patches,it means
+        # there are 4 context patches in each image. So if I want to do dissimilarity
+        # for the same image position, then I need to stride by 4 each time across the patch
+        # dimension.
+        for i in range(patches.shape[0]):
+            loss += torch.cosine_similarity(...).mean()
+        return self.temporal_inconsistency_coeff * loss
 
     def forward(self, states, actions, step=None):
         """states [T, batch_size, 1, 28, 28]
@@ -173,7 +180,6 @@ class VJEPA(torch.nn.Module):
         loss = self.l2_loss(predicted_target_patches, target_patches)
         if self.args.temporal_inconsistency_enabled:
             loss += self.temporal_inconsistency_loss(predicted_target_patches)
-            loss += self.temporal_inconsistency_loss(context_patches)
 
         #### EMA for target
         m = next(self.ema_scheduler)

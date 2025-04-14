@@ -459,10 +459,12 @@ def main(config: TrainConfig):
 
 
 if __name__ == "__main__":
-    # import sys
-    # sys.argv[1:] = [
-    #     "--config", "reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml"
-    # ]
+    import sys
+    sys.argv[1:] = [
+        "--config", "reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml",
+        "--values",
+        "vjepa.temporal_inconsistency_enabled=True",
+    ]
     cfg = TrainConfig.parse_from_command_line()
     print(OmegaConf.to_yaml(cfg))
     main(cfg)
