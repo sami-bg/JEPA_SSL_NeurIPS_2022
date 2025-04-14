@@ -14,9 +14,10 @@ def parse_args():
     parser.add_argument("--num_trials", type=int, default=5, help="Number of random learning rates to try")
     parser.add_argument("--min_lr_exp", type=float, default=-3, help="Minimum learning rate exponent (10^x)")
     parser.add_argument("--max_lr_exp", type=float, default=-2.5, help="Maximum learning rate exponent (10^x)")
-    parser.add_argument("--output_dir", type=str, default="results/lr_sweep", help="Base output directory")
-    parser.add_argument("--tubelet_size", type=int, default=2, help="Tubelet size")
-    parser.add_argument("--quick_debug", action="store_true", help="Quick debug mode")
+    parser.add_argument("--output_dir", type=str, default="results/param_sweep", help="Base output directory for all sweeps")
+    parser.add_argument("--tubelet_size", type=int, required=True, help="Tubelet size to use")
+    parser.add_argument("--masking_ratio", type=float, required=True, help="Masking ratio to use")
+    parser.add_argument("--quick_debug", action='store_true', help="Enable quick debug mode")
     return parser.parse_args()
 
 def generate_random_lr(min_exp, max_exp):
@@ -54,28 +55,31 @@ def main():
     model_type = detect_model_type(config_path)
     print(f"Detected model type: {model_type}")
     
-    # Create output directory
-    output_base_dir = os.path.join(args.output_dir, config_basename)
+    # Create a more specific output directory including tubelet size and masking ratio
+    sweep_params_str = f"ts{args.tubelet_size}_mr{args.masking_ratio}"
+    output_base_dir = os.path.join(args.output_dir, config_basename, sweep_params_str)
     os.makedirs(output_base_dir, exist_ok=True)
     
-    # Log file to track experiments
-    log_file = os.path.join(args.output_dir, "experiments.csv")
+    # Log file to track experiments for this specific sweep config
+    log_file = os.path.join(output_base_dir, "experiments.csv")
     if not os.path.exists(log_file):
         with open(log_file, "w") as f:
-            f.write("config,model_type,learning_rate,output_dir\n")
+            # Add tubelet_size and masking_ratio to header
+            f.write("config,model_type,learning_rate,tubelet_size,masking_ratio,output_dir\n")
     
-    run_group = f"{config_basename}_lr_sweep"
+    # Include tubelet size and masking ratio in the run group
+    run_group = f"{config_basename}_ts{args.tubelet_size}_mr{args.masking_ratio}_lr_sweep"
     # Run trials with different learning rates
     for trial in range(args.num_trials):
         # Generate random learning rate
         lr = generate_random_lr(args.min_lr_exp, args.max_lr_exp)
         
-        # Create trial-specific output directory
+        # Create trial-specific output directory (relative to the new output_base_dir)
         trial_output_dir = os.path.join(output_base_dir, f"lr_{lr:.8f}")
         os.makedirs(trial_output_dir, exist_ok=True)
         
-        # Construct run name for wandb
-        run_name = f"{config_basename}_lr_{lr:.8f}_tubelet-size{args.tubelet_size}"
+        # Construct run name for wandb, including all swept parameters
+        run_name = f"{config_basename}_lr_{lr:.8f}_ts{args.tubelet_size}_mr{args.masking_ratio}"
 
         # Build the command
         cmd = [
@@ -85,22 +89,25 @@ def main():
             f"wandb=True",
             f"output_path={trial_output_dir}",
             f"model_type={model_type}",
-            f"{model_type.lower()}.base_lr={lr}", # TODO Add tubelet size override option 
+            # Pass the specific lr, tubelet_size, and masking_ratio
+            f"{model_type.lower()}.base_lr={lr}",
             f"{model_type.lower()}.tubelet_size={args.tubelet_size}",
+            f"{model_type.lower()}.masking_ratio={args.masking_ratio}",
             f"run_name={run_name}",
             f"run_group={run_group}",
+            # Pass quick_debug correctly
             f"quick_debug={str(args.quick_debug).lower()}"
         ]
         
-        print(f"\nTrial {trial+1}/{args.num_trials}: Running with learning rate {lr:.8f}")
+        print(f"\nTrial {trial+1}/{args.num_trials}: Running with lr={lr:.8f}, ts={args.tubelet_size}, mr={args.masking_ratio}")
         print(f"Command: {' '.join(cmd)}")
         
         # Run the command
         process = subprocess.run(cmd)
         
-        # Log the experiment
+        # Log the experiment, including tubelet_size and masking_ratio
         with open(log_file, "a") as f:
-            f.write(f"{config_basename},{model_type},{lr},{trial_output_dir}\n")
+            f.write(f"{config_basename},{model_type},{lr},{args.tubelet_size},{args.masking_ratio},{trial_output_dir}\n")
         
         if process.returncode != 0:
             print(f"Warning: Command exited with return code {process.returncode}")

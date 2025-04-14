@@ -338,12 +338,14 @@ class Trainer:
         )
         save_dict["probe_enc_model"] = probing_enc_result.model
 
-        if self.config.model_type == ModelType.VJEPA:
+        # if self.config.model_type == ModelType.VJEPA:
+        if False:
             for within_tubelet in [True, False]:
                 suffix = "_within_tubelet" if within_tubelet else "_between_tubelet"
                 probing_action_result = probing.probe_action_position_vjepa(
                     backbone=self.pred_ms.backbone,
                     dataset=self.val_ds,
+                    tubelet_size=self.pred_ms.args.tubelet_size,
                     quick_debug=self.config.quick_debug,
                     config=self.config.probing_cfg,
                     within_tubelet=within_tubelet,

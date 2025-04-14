@@ -147,6 +147,12 @@ class VJEPA(torch.nn.Module):
 
         return collated_masks_enc, collated_masks_pred
 
+    def temporal_inconsistency_loss(self, patches):
+        loss = 0.
+        # NOTE Need to do some arithmetic here to take one patch across all frames
+        for i in range(patches.shape[0]): loss += torch.cosine_similarity(...).mean()
+        return self.args.temporal_inconsistency_coeff * loss
+
     def forward(self, states, actions, step=None):
         """states [T, batch_size, 1, 28, 28]
         actions [T-1, batch_size]
@@ -165,7 +171,10 @@ class VJEPA(torch.nn.Module):
         predicted_target_patches = self.vit_predictor(context_patches, target_patches, masks_enc, masks_pred, actions)
         ##### Compute loss
         loss = self.l2_loss(predicted_target_patches, target_patches)
-        
+        if self.args.temporal_inconsistency_enabled:
+            loss += self.temporal_inconsistency_loss(predicted_target_patches)
+            loss += self.temporal_inconsistency_loss(context_patches)
+
         #### EMA for target
         m = next(self.ema_scheduler)
         with torch.no_grad():

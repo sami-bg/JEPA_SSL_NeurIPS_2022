@@ -162,6 +162,7 @@ def probe_enc_position(
                         e = backbone(states.cuda())
                     # NOTE SAMI: Since e is flattened, we need to reshape it back to batch_size x num_tubelets x spatial_patches x embedding_dim
                     # so that we can apply the prober to tubelets of the entire frame.
+                    # TODO Do we divide by tubelet size as well?
                     e = e.view(batch_size, num_tubelets, -1)
                     # NOTE SAMI: Prober here should be Linear(in_features=3136, out_features=(num_dots, 4), bias=False)
                     loss = 0.0
@@ -169,7 +170,7 @@ def probe_enc_position(
                     for i in range(num_tubelets):
                         pred_loc = prober(e[:, i])
                         loss += location_losses(pred_loc, target_loc[:, i])
-                    loss /= num_tubelets
+                    loss /= (num_tubelets * tubelet_size)
                 else:
                     if not config.full_finetune:
                         with torch.no_grad():
@@ -216,7 +217,7 @@ def probe_enc_position(
                     pred_loc = prober(e[:, i])
                     target_frame_loc = target_loc[:, i]
                     loss += location_losses(pred_loc, target_frame_loc)
-                loss /= num_tubelets
+                loss /= (num_tubelets * tubelet_size)
             else:
                 target_loc = batch.locations[:, 0].cuda().float()
                 e = backbone(batch.states[:, 0].cuda())
@@ -276,18 +277,21 @@ def probe_action_position_vjepa(
     target_action = test_batch.actions
     # NOTE: Keep actions that correspond to within tubelets, so:
     # 0->1, 2->3, 4->5, ..., or between tubelets: 1->2, 3->4, 5->6, ...
-    if within_tubelet: target_action = target_action[:, 0::2, :, :]
-    else:              target_action = target_action[:, 1::2, :, :]
+    # TODO This needs to be re-thought for changing the tubelet size. If between-tubelets, we can't 
+    # start at 1.
+    if within_tubelet: target_action = target_action[:, 0::tubelet_size, :, :]
+    else:              target_action = target_action[:, tubelet_size-1::tubelet_size, :, :]
     
     # For each frame tubelet, we flatten it (7x7x64) into a vector of size 3136, then predict 1 action.
     # In the between-tubelet case, we flatten and concat (3136x2) and predict 1 action.
     prober_output_shape = (num_dots, action_dim)
     with torch.no_grad():
-        e = backbone(test_batch.states.cuda())
-        e = e.view(batch_size, num_tubelets, -1)
+        test_e = backbone(test_batch.states.cuda())
+        test_e = test_e.view(batch_size, num_tubelets, -1)
         # NOTE: Between tubelets, we have two frames, so we double the embedding dimension.
-        if within_tubelet: embedding = e.shape[-1]
-        else: embedding = 2 * e.shape[-1]
+        breakpoint()
+        if within_tubelet: embedding = test_e.shape[-1]
+        else: embedding = 2 * test_e.shape[-1]
 
     prober = Prober(embedding, prober_arch, output_shape=prober_output_shape)
     prober = prober.cuda()
