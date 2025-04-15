@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 import copy
 import torch
 from torch.nn import functional as F
@@ -62,7 +62,8 @@ class VJEPAConfig(ConfigBase):
     rnn_burnin: int = 1
     temporal_inconsistency_enabled: bool = True
     temporal_inconsistency_coeff: float = 1.0
-
+    # NOTE One of "full" or "pairwise", but we can't annotate with Literal because of omegaconf
+    temporal_inconsistency_type: str = "full"
 
 @dataclass
 class LossInfo:
@@ -150,15 +151,35 @@ class VJEPA(torch.nn.Module):
         return collated_masks_enc, collated_masks_pred
 
     def temporal_inconsistency_loss(self, patches):
+        assert self.args.temporal_inconsistency_enabled
+        assert self.args.temporal_inconsistency_type in ["full", "pairwise"]
         loss = 0.
+        tubelets_per_frame = self.num_frames // self.backbone.tubelet_size
+        patches_per_tubelet = patches.shape[1] // tubelets_per_frame
         # NOTE Need to do some arithmetic here to take one patch across all frames
         # NOTE If tubelet size is 2, num_frames is 18, and I have 36 patches,it means
         # there are 4 context patches in each image. So if I want to do dissimilarity
         # for the same image position, then I need to stride by 4 each time across the patch
         # dimension.
-        for i in range(patches.shape[0]):
-            loss += torch.cosine_similarity(...).mean()
-        return self.temporal_inconsistency_coeff * loss
+        for spatial_position in range(patches_per_tubelet):
+            patch_across_time = patches[:, spatial_position::patches_per_tubelet, ...]
+            if self.args.temporal_inconsistency_type == "full":
+                # NOTE Each spatial-patch should be maximally different from every other patch across time.
+                # Each patch should be unique, but this could collapse everything with fixed noise because
+                # we could just be masking the movingdot!
+                for temporal_position in range(patch_across_time.shape[1]):
+                    for other_temporal_position in range(temporal_position+1, patch_across_time.shape[1]):
+                        p_i, p_j = (patch_across_time[:, temporal_position, ...],
+                                    patch_across_time[:, other_temporal_position, ...])
+                        loss += torch.cosine_similarity(p_i, p_j).mean()
+            if self.args.temporal_inconsistency_type == "pairwise":
+                # NOTE Each spatial-patch should be different from the next frame's corresponding patch.
+                # TODO Should we add a frame-skip?
+                for temporal_position in range(patch_across_time.shape[1]-1):
+                    p_i, p_i_next = (patch_across_time[:, temporal_position, ...],
+                                     patch_across_time[:, temporal_position+1, ...])
+                    loss += torch.cosine_similarity(p_i, p_i_next).mean()
+        return self.args.temporal_inconsistency_coeff * loss
 
     def forward(self, states, actions, step=None):
         """states [T, batch_size, 1, 28, 28]
@@ -180,6 +201,7 @@ class VJEPA(torch.nn.Module):
         loss = self.l2_loss(predicted_target_patches, target_patches)
         if self.args.temporal_inconsistency_enabled:
             loss += self.temporal_inconsistency_loss(predicted_target_patches)
+            loss += self.temporal_inconsistency_loss(context_patches)
 
         #### EMA for target
         m = next(self.ema_scheduler)

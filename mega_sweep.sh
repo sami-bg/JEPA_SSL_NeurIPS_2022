@@ -22,12 +22,15 @@ mkdir -p "${log_dir}"
 # Define the array of noise levels
 # NOTE These need to be an exact string match to the config file names
 # noise_levels=(0.25 0.50 0.75 1.00 1.25 1.5 1.75 2.0 2.25 2.5)
-noise_levels=(1.75)
+noise_levels=(0.75)
 # noise_levels=(0.25 0.50 1.25 1.5 1.75)
 # Define arrays for tubelet sizes and masking ratios
-tubelet_sizes=(3)
+tubelet_sizes=(2 3 6)
 # tubelet_sizes=(1 2 3)
 masking_ratios=(0.7)
+
+temporal_consistency_types=("full" "pairwise")
+temporal_consistency_on_off=("True" "False")
 
 echo "Starting mega sweep for '${combination}' combination with ${num_trials} LR trials per setting."
 echo "Log directory: ${log_dir}"
@@ -55,15 +58,21 @@ for structure in "uniform"; do
 
         echo "Launching sweep for: config=${config_path}, ts=${ts}, mr=${mr}. Log: ${log_file}"
 
-        # Pass tubelet_size and masking_ratio to random_sweeps.py
-        ~/.conda/envs/vlad/bin/python random_sweeps.py \
-            --config "${config_path}" \
-            --num_trials "${num_trials}" \
-            --tubelet_size "${ts}" \
-            --masking_ratio "${mr}" \
-            > "${log_file}" 2>&1 &
+        for temporal_consistency_type in "${temporal_consistency_types[@]}"; do
+          for temporal_consistency_on_off in "True"; do
+            # Pass tubelet_size and masking_ratio to random_sweeps.py
+            ~/.conda/envs/vlad/bin/python random_sweeps.py \
+                --config "${config_path}" \
+                --num_trials "${num_trials}" \
+                --tubelet_size "${ts}" \
+                --masking_ratio "${mr}" \
+                --temporal_inconsistency_type "${temporal_consistency_type}" \
+                --temporal_inconsistency_enabled "${temporal_consistency_on_off}" \
+                > "${log_file}" 2>&1 &
 
-        job_count=$((job_count + 1))
+            job_count=$((job_count + 1))
+          done # end temporal_consistency_on_off loop
+        done # end temporal_consistency_type loop
 
         # This is so it downloads CIFAR10 and doesnt destroy the other processes.
         # Apply sleep only for the first job of each 'structured' config to handle potential dataset download contention
