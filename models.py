@@ -421,9 +421,9 @@ def build_backbone(
         embedding = 512
     elif arch == "vit":
         backbone = VisionTransformer(
-            img_size=28,
-            patch_size=4,
-            num_frames=18,
+            img_size=kwargs['img_size'],
+            patch_size=kwargs['patch_size'],
+            num_frames=kwargs['num_frames'],
             tubelet_size=kwargs['tubelet_size'],
             embed_dim=kwargs['encoder_embed_dim'],
             depth=kwargs['encoder_depth'],

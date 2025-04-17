@@ -18,6 +18,8 @@ def parse_args():
     parser.add_argument("--tubelet_size", type=int, required=True, help="Tubelet size to use")
     parser.add_argument("--masking_ratio", type=float, required=True, help="Masking ratio to use")
     parser.add_argument("--quick_debug", action='store_true', help="Enable quick debug mode")
+    parser.add_argument("--temporal_inconsistency_enabled", choices=["True", "False"], help="Enable temporal inconsistency")
+    parser.add_argument("--temporal_inconsistency_type", type=str, default="full", choices=["full", "pairwise"], help="Temporal inconsistency type")
     return parser.parse_args()
 
 def generate_random_lr(min_exp, max_exp):
@@ -93,6 +95,8 @@ def main():
             f"{model_type.lower()}.base_lr={lr}",
             f"{model_type.lower()}.tubelet_size={args.tubelet_size}",
             f"{model_type.lower()}.masking_ratio={args.masking_ratio}",
+            f"{model_type.lower()}.temporal_inconsistency_enabled={args.temporal_inconsistency_enabled}",
+            f"{model_type.lower()}.temporal_inconsistency_type={args.temporal_inconsistency_type}",
             f"run_name={run_name}",
             f"run_group={run_group}",
             # Pass quick_debug correctly

@@ -87,6 +87,9 @@ class VJEPA(torch.nn.Module):
             backbone_width_factor=1,
             channels=args.channels,
             **{
+                "img_size": args.img_size,
+                "patch_size": args.patch_size,
+                "num_frames": args.num_frames,
                 "tubelet_size": args.tubelet_size,
                 "encoder_embed_dim": args.encoder_embed_dim,
                 "encoder_depth": args.encoder_depth,
