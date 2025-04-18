@@ -583,6 +583,7 @@ class AttentivePooler(nn.Module):
         self,
         num_queries=1,
         embed_dim=768,
+        out_dim=None,
         num_heads=12,
         mlp_ratio=4.0,
         depth=1,
@@ -593,6 +594,12 @@ class AttentivePooler(nn.Module):
     ):
         super().__init__()
         self.query_tokens = nn.Parameter(torch.zeros(1, num_queries, embed_dim))
+        self.embed_dim = embed_dim
+        self.out_dim = out_dim or embed_dim
+        
+        self.input_proj = None
+        if self.out_dim != self.embed_dim: 
+            self.input_proj = nn.Linear(self.embed_dim, self.out_dim)
 
         self.complete_block = complete_block
         if complete_block:
@@ -653,6 +660,10 @@ class AttentivePooler(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        # NOTE I added this so that we can decouple the input and output feature dims
+        # in case H-JEPA wants to use a different feature dim for the attentive pooler
+        if self.input_proj is not None: 
+            x = self.input_proj(x)
         q = self.query_tokens.repeat(len(x), 1, 1)
         q = self.cross_attention_block(q, x)
         if self.blocks is not None:

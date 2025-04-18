@@ -1,2 +1,5 @@
 [tool.black]
 line-length = 88
+
+[tool.pyright]
+exclude = ["results", "ccv", "wandb", "models", "temp_slurm_files"]
