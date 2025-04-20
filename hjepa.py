@@ -69,6 +69,7 @@ class LossInfo:
 
 class HJEPA(torch.nn.Module):
     def __init__(self, args):
+        super().__init__()
         self.args = args
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # -- video data
@@ -77,14 +78,14 @@ class HJEPA(torch.nn.Module):
         # -- hierarchy
         # Validate that we have the same number of hierarchies for each
         assert len(args.patch_sizes) == len(args.tubelet_sizes) == len(args.masking_ratios)
-        assert sorted(args.tubelet_sizes) == args.tubelet_sizes
+        assert tuple(sorted(args.tubelet_sizes)) == tuple(args.tubelet_sizes)
         self.num_hierarchies = len(args.patch_sizes)
         self.masking_ratios = sorted(args.masking_ratios)
         self.patch_sizes: tuple[int, ...] = args.patch_sizes
         self.tubelet_sizes: tuple[int, ...] = args.tubelet_sizes
-        self.num_patches_spatial: tuple[int, ...] = tuple(args.img_size // p for p in self.patch_sizes)
+        self.nums_patches_spatial: tuple[int, ...] = tuple(args.img_size // p for p in self.patch_sizes)
         self.nums_keep_spatial: tuple[int, ...] = tuple(
-            int(self.num_patches_spatial[i] * (1 - self.masking_ratios[i]))
+            int(self.nums_patches_spatial[i] * (1 - self.masking_ratios[i]))
             for i in range(self.num_hierarchies)
         )
         # -- build backbones for each level of the hierarchy
@@ -93,6 +94,7 @@ class HJEPA(torch.nn.Module):
                 args.arch,
                 args.encoder_embed_dim,
                 backbone_mlp=None,
+                backbone_width_factor=1,
                 **{
                     "img_size": ims,
                     "patch_size": ps,
@@ -103,9 +105,10 @@ class HJEPA(torch.nn.Module):
                     "encoder_mlp_ratio": emlpr,
                     "encoder_qkv_bias": eqkvb,
                     "encoder_qk_scale": eqks,
+                    "encoder_num_heads": nh,
                 }
             )
-            for ps, ts, nf, ims, eed, ed, emlpr, eqkvb, eqks in zip(
+            for ps, ts, nf, ims, eed, ed, emlpr, eqkvb, eqks, nh in zip(
                 self.patch_sizes,
                 self.tubelet_sizes,
                 (self.num_frames,) * self.num_hierarchies,
@@ -114,9 +117,12 @@ class HJEPA(torch.nn.Module):
                 (args.encoder_depth,) * self.num_hierarchies,
                 (args.encoder_mlp_ratio,) * self.num_hierarchies,
                 (args.encoder_qkv_bias,) * self.num_hierarchies,
-                (args.encoder_qk_scale,) * self.num_hierarchies
+                (args.encoder_qk_scale,) * self.num_hierarchies,
+                (args.encoder_num_heads,) * self.num_hierarchies,
+            )
         ))
-    )
+        for bb in self.backbones: bb = bb.cuda()
+
         # NOTE Downstream predictor, not vit predictor for jepa
         self.predictor = models.build_predictor(
             args.predictor, self.embeddings[0],  # NOTE We have to specify which hierarchy we are using, this assumes 0 (tubesize=2)
@@ -137,6 +143,7 @@ class HJEPA(torch.nn.Module):
                 (self.img_size,) * self.num_hierarchies, (self.num_frames,) * self.num_hierarchies
             )
         ]
+        for v in self.vit_v_predictors: v = v.cuda()
         # NOTE There is an MLP between each hierarchy.
         # TODO I think this will need its inputs to be a fn of the 
         # tubelet size. 
@@ -148,14 +155,15 @@ class HJEPA(torch.nn.Module):
         self.h_tubelet_ratios = tuple(t2//t1 for t1, t2 in zip(self.tubelet_sizes, self.tubelet_sizes[1:]))
         self.attentive_h_predictors = [
             models.AttentivePooler(
-                num_queries=self.num_patches_spatial[i+1],  # NOTE Next num patches
-                embed_dim=self.h_tubelet_ratios[i]*self.embeddings[i],  # NOTE Predict H-4 from 2 H-2s
+                num_queries=self.nums_patches_spatial[i+1],  # NOTE Next num patches
                 out_dim=self.embeddings[i+1],
                 depth=2,
+                # NOTE Check why this is not necessary? Or if it is?
+                embed_dim=self.embeddings[i] # * self.h_tubelet_ratios[i]  # NOTE Predict H-4 from 2 H-2s
             )
             for i in range(self.num_hierarchies-1)
         ]
-
+        for a in self.attentive_h_predictors: a = a.cuda()
         assert len(set(map(len, [
             self.vit_v_predictors,
             self.ema_schedulers,
@@ -169,10 +177,10 @@ class HJEPA(torch.nn.Module):
             loss += torch.mean(torch.abs(zi - hi)**2) / 2
         return loss
 
-    def sample_mask(self):
+    def sample_mask(self, hierarchy_idx: int):
         mask = np.hstack([
-            np.zeros(self.num_patches_spatial - self.num_keep_spatial),
-            np.ones(self.num_keep_spatial),
+            np.zeros(self.nums_patches_spatial[hierarchy_idx] - self.nums_keep_spatial[hierarchy_idx]),
+            np.ones(self.nums_keep_spatial[hierarchy_idx]),
         ])
         np.random.shuffle(mask)
         mask = torch.tensor(np.tile(mask, (self.num_frames, 1)))
@@ -181,12 +189,13 @@ class HJEPA(torch.nn.Module):
         mask_e = torch.nonzero(mask).squeeze()
         return mask_e, mask_p
     
-    def tube_masking(self, batch_size: int):
+    def tube_masking(self, batch_size: int) -> list[tuple[torch.Tensor, torch.Tensor]]:
         collated_masks_pred, collated_masks_enc = [], []
         for _ in range(batch_size):
-            mask_e, mask_p = self.sample_mask()
-            collated_masks_enc.append(mask_e.to(self.device))
-            collated_masks_pred.append(mask_p.to(self.device))
+            masks_e, masks_p = zip(*[self.sample_mask(i) for i in range(self.num_hierarchies)])
+            masks_e, masks_p = torch.stack(masks_e).to(self.device), torch.stack(masks_p).to(self.device)
+            collated_masks_enc.append(masks_e)
+            collated_masks_pred.append(masks_p)
 
         collated_masks_enc = torch.utils.data.default_collate(collated_masks_enc)
         collated_masks_pred = torch.utils.data.default_collate(collated_masks_pred)
@@ -200,23 +209,28 @@ class HJEPA(torch.nn.Module):
         T,B,C,H,W = states.shape
         
         ##### Tube masking
+        # These are of shape [batch_size, num_hierarchies, num_patches, 3]
         masks_enc, masks_pred = self.tube_masking(B)
         loss = 0.
         # NOTE: Logging
         hierarchy_loss_stats = {}
 
         hierarchy_patches = []
+        # Forward hierarchies
         for i in range(self.num_hierarchies):
+            # Each hierarchy has its own masks, so we access the correct ones
+            masks_pred_i, masks_enc_i = masks_pred[:, i], masks_enc[:, i]
             ##### Forward target
             with torch.no_grad():
-                target_patches  = self.ema_backbones[i](states, masks=masks_pred)
+                target_patches  = self.ema_backbones[i](states, masks=masks_pred_i)
             ##### Forward context
-            context_patches = self.backbones[i](states, masks=masks_enc)
-            predicted_target_patches = self.vit_v_predictors[i](context_patches, target_patches, masks_enc, masks_pred, actions)
+            context_patches = self.backbones[i](states, masks=masks_enc_i)
+            predicted_target_patches = self.vit_v_predictors[i](context_patches, target_patches, masks_enc_i, masks_pred_i, actions)
             loss += (h_loss := self.l2_loss(predicted_target_patches, target_patches))
             hierarchy_loss_stats[f"h{i}_reconstruction_loss"] = h_loss
             hierarchy_patches.append(predicted_target_patches)
         
+        # Next-hierarchy distillation
         for i in range(self.num_hierarchies-1):
             predicted_next_hierarchy = self.attentive_h_predictors[i](hierarchy_patches[i])
             loss += (h_loss := self.l2_loss(predicted_next_hierarchy, hierarchy_patches[i+1]))
@@ -226,9 +240,10 @@ class HJEPA(torch.nn.Module):
     
 
 if __name__ == "__main__":
-    states = torch.randn(16, 1, 1, 28, 28)
-    actions = torch.randn(15, 1)
-    hjepa = HJEPA(HJEPAConfig())
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    states = torch.randn(16, 1, 1, 28, 28).to(device)
+    actions = torch.randn(15, 16).to(device)
+    hjepa = HJEPA(HJEPAConfig()).cuda()
     loss = hjepa(states, actions)
     print(loss)
     
