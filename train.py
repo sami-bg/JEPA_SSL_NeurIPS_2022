@@ -464,6 +464,7 @@ if __name__ == "__main__":
     #     "--config", "reproduce_configs/vjepa/fixed_structured/sweep_fixed_structured.(0.50).vjepa.yaml",
     #     "--values",
     #     "vjepa.temporal_inconsistency_enabled=True",
+    #     "wandb=False"
     # ]
     cfg = TrainConfig.parse_from_command_line()
     print(OmegaConf.to_yaml(cfg))

@@ -598,7 +598,7 @@ class AttentivePooler(nn.Module):
         self.out_dim = out_dim or embed_dim
         
         self.input_proj = None
-        if self.out_dim != self.embed_dim: 
+        if self.out_dim != self.embed_dim:
             self.input_proj = nn.Linear(self.embed_dim, self.out_dim)
 
         self.complete_block = complete_block
@@ -1378,6 +1378,7 @@ class VisionTransformerPredictor(nn.Module):
         :param tgt: target tokens
         :param masks_ctxt: indices of context tokens in input
         :params masks_tgt: indices of target tokens in input
+        :params mask_index: who knows!
         """
 
         assert (masks_ctxt is not None) and (masks_tgt is not None), 'Cannot run predictor without mask indices'

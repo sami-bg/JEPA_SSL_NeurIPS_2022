@@ -7,8 +7,8 @@ import wandb
 import numpy as np
 from matplotlib import pyplot as plt
 import utils
+from utils import apply_masks
 from configs import ConfigBase
-
 import models
 
 @dataclass
@@ -20,7 +20,7 @@ class VJEPAConfig(ConfigBase):
     ipe_scale: float = 1.25
     ipe: int = 10_000
     #### Data
-    masking_ratio: float = 0.25
+    masking_ratio: float = 0.9
     img_size: int = 28
     patch_size: int = 4
     num_frames: int = 18
@@ -47,6 +47,14 @@ class VJEPAConfig(ConfigBase):
     predictor_drop_rate: float = 0.0
     predictor_attn_drop_rate: float = 0.0
     predictor_drop_path_rate: float = 0.0
+    predictor_use_mask_tokens: bool = True
+    predictor_zero_init_mask_tokens: bool = True
+    # In VJEPA, this is the number of mask generators. For example,
+    # if we use a mixture of 2 mask generators for multiblock3d, then
+    # this should be 2. This will unfortunately have to be manually set
+    # unless we really dial in the infra for masking, but we are keeping it
+    # simple with uniform random tube masking for now.
+    predictor_num_mask_tokens: int = 1
 
     #### Encoder
     encoder_embed_dim: int = 64
@@ -77,8 +85,9 @@ class VJEPA(torch.nn.Module):
         self.args = args
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.masking_ratio = args.masking_ratio
-        self.num_patches_spatial = args.img_size // args.patch_size
+        self.num_patches_spatial = (args.img_size // args.patch_size) ** 2
         self.num_frames = args.num_frames
+        self.grid_depth = args.num_frames // args.tubelet_size
         self.num_keep_spatial = int(self.num_patches_spatial * (1 - args.masking_ratio))
         self.backbone, self.embedding = models.build_backbone(
             args.arch,
@@ -111,6 +120,7 @@ class VJEPA(torch.nn.Module):
         self.ema_scheduler = (ema[0] + i*(ema[1]-ema[0])/(ipe*num_epochs*ipe_scale)
                           for i in range(int(ipe*num_epochs*ipe_scale)+1))
         self.ema_backbone = copy.deepcopy(self.backbone)
+        for p in self.ema_backbone.parameters(): p.requires_grad = False
         self.vit_predictor = models.VisionTransformerPredictor(
             tubelet_size=args.tubelet_size,
             img_size=args.img_size,
@@ -118,6 +128,9 @@ class VJEPA(torch.nn.Module):
             num_frames=args.num_frames,
             embed_dim=args.encoder_embed_dim,
             predictor_embed_dim=args.predictor_embed_dim,
+            use_mask_tokens=args.predictor_use_mask_tokens,
+            num_mask_tokens=args.predictor_num_mask_tokens,
+            zero_init_mask_tokens=args.predictor_zero_init_mask_tokens,
         )
 
     def l2_loss(self, predicted_representations, target_representations):
@@ -135,7 +148,8 @@ class VJEPA(torch.nn.Module):
             np.ones(self.num_keep_spatial),
         ])
         np.random.shuffle(mask)
-        mask = torch.tensor(np.tile(mask, (self.num_frames, 1)))
+        # NOTE Maybe we div by tubelet size 
+        mask = torch.tensor(np.tile(mask, (self.grid_depth, 1)))
         mask = mask.flatten()
         mask_p = torch.argwhere(mask == 0).squeeze()
         mask_e = torch.nonzero(mask).squeeze()
@@ -195,10 +209,12 @@ class VJEPA(torch.nn.Module):
         masks_enc, masks_pred = self.tube_masking(B)
         ##### Forward target
         with torch.no_grad():
-            target_patches  = self.ema_backbone(states, masks=masks_pred)
+            # target_patches  = self.ema_backbone(states, masks=masks_pred)
+            target_patches  = self.ema_backbone(states, masks=None)
+            target_patches = F.layer_norm(target_patches, (target_patches.size(-1),))  # normalize over feature-dim  [B, N, D]
+            target_patches = apply_masks(target_patches, masks_pred)
         ##### Forward context
         context_patches = self.backbone(states, masks=masks_enc)
-        # TODO Somehow condition the predictor on the actions
         predicted_target_patches = self.vit_predictor(context_patches, target_patches, masks_enc, masks_pred, actions)
         ##### Compute loss
         loss = self.l2_loss(predicted_target_patches, target_patches)
@@ -214,35 +230,10 @@ class VJEPA(torch.nn.Module):
 
         return LossInfo(total_loss=loss, diagnostics_info=None)
 
-        
 if __name__ == "__main__":
-    args = object()
-    args.arch = "vit"
-    args.embedding_size = 64
-    args.backbone_mlp = None
-    args.backbone_width_factor = 1
-    args.channels = 1
-    args.encoder_embed_dim = 64
-    args.encoder_depth = 12
-    args.encoder_num_heads = 4
-    args.encoder_mlp_ratio = 4.0
-    args.encoder_qkv_bias = True
-    args.encoder_qk_scale = None
-    
-    backbone, embedding = models.build_backbone(
-        args.arch,
-        args.embedding_size,
-        args.backbone_mlp,
-        args.backbone_width_factor,
-        channels=args.channels,
-        **{
-            "encoder_embed_dim": args.encoder_embed_dim,
-            "encoder_depth": args.encoder_depth,
-            "encoder_num_heads": args.encoder_num_heads,
-            "encoder_mlp_ratio": args.encoder_mlp_ratio,
-            "encoder_qkv_bias": args.encoder_qkv_bias,
-            "encoder_qk_scale": args.encoder_qk_scale,
-        }
-    )
-    
-    print(backbone)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    states = torch.randn(18, 1, 1, 28, 28).to(device)
+    actions = torch.randn(17, 1).to(device)
+    vjepa = VJEPA(VJEPAConfig()).cuda()
+    loss = vjepa(states, actions)
+    print(loss)
