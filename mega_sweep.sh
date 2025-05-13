@@ -21,16 +21,17 @@ mkdir -p "${log_dir}"
 
 # Define the array of noise levels
 # NOTE These need to be an exact string match to the config file names
-# noise_levels=(0.25 0.50 0.75 1.00 1.25 1.5 1.75 2.0 2.25 2.5)
-noise_levels=(0.75)
+noise_levels=(0.25 0.50 0.75 1.00 1.25 1.5 1.75 2.0 2.25 2.5)
+# noise_levels=(0.75)
 # noise_levels=(0.25 0.50 1.25 1.5 1.75)
 # Define arrays for tubelet sizes and masking ratios
-tubelet_sizes=(2 3 6)
+tubelet_sizes=(1 2 3 6)
 # tubelet_sizes=(1 2 3)
-masking_ratios=(0.7)
+masking_ratios=(0.9)
 
 temporal_consistency_types=("full" "pairwise")
-temporal_consistency_on_off=("True" "False")
+# temporal_consistency_on_off=("True" "False")
+temporal_consistency_on_off=("False")
 
 echo "Starting mega sweep for '${combination}' combination with ${num_trials} LR trials per setting."
 echo "Log directory: ${log_dir}"

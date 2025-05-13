@@ -117,6 +117,7 @@ class HJEPA(torch.nn.Module):
                 (args.encoder_qk_scale,) * self.num_hierarchies
         ))
     )
+
         # NOTE Downstream predictor, not vit predictor for jepa
         self.predictor = models.build_predictor(
             args.predictor, self.embeddings[0],  # NOTE We have to specify which hierarchy we are using, this assumes 0 (tubesize=2)

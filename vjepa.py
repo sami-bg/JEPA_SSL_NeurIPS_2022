@@ -60,10 +60,11 @@ class VJEPAConfig(ConfigBase):
     encoder_drop_path_rate: float = 0.0
     #### Misc
     rnn_burnin: int = 1
-    temporal_inconsistency_enabled: bool = True
+    temporal_inconsistency_enabled: bool = False
     temporal_inconsistency_coeff: float = 1.0
     # NOTE One of "full" or "pairwise", but we can't annotate with Literal because of omegaconf
     temporal_inconsistency_type: str = "full"
+
 
 @dataclass
 class LossInfo:
