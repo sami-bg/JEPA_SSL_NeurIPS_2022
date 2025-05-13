@@ -22,6 +22,7 @@ from vicreg import VICRegConfig, VICRegPredMultistep
 from lars import LARS, exclude_bias_and_norm, adjust_learning_rate
 import probing
 from vjepa import VJEPAConfig, VJEPA
+from hjepa import HJEPAConfig, HJEPA
 from enums import ModelType, DatasetType
 
 os.environ['WANDB_DISABLED'] = "true"
@@ -66,6 +67,7 @@ class TrainConfig(ConfigBase):
     rssm: RSSMConfig = field(default_factory=RSSMConfig)
     simclr: SimCLRConfig = field(default_factory=SimCLRConfig)
     vjepa: VJEPAConfig = field(default_factory=VJEPAConfig)
+    hjepa: HJEPAConfig = field(default_factory=HJEPAConfig)
     eval_at_the_end_only: bool = False
     dataset_type: DatasetType = DatasetType.Single
     cfg_name: str = ""
@@ -90,6 +92,10 @@ class Trainer:
         elif self.config.model_type == ModelType.VJEPA:
             self.model_config = self.config.vjepa
             self.pred_ms = VJEPA(self.config.vjepa)
+            self.pred_ms = self.pred_ms.cuda()
+        elif self.config.model_type == ModelType.HJEPA:
+            self.model_config = self.config.hjepa
+            self.pred_ms = HJEPA(self.config.hjepa)
             self.pred_ms = self.pred_ms.cuda()
         else:
             raise ValueError(f"No valid model type : {self.config.model_type}")
@@ -128,7 +134,7 @@ class Trainer:
             wandb.run.summary["actual_repr_size"] = self.pred_ms.embedding
 
     def init_optimizer(self):
-        if self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA]:
+        if self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA, ModelType.HJEPA]:
             self.optimizer = LARS(
                 self.pred_ms.parameters(),
                 lr=0,
@@ -255,7 +261,7 @@ class Trainer:
                             lr=self.model_config.learning_rate / 10,
                             eps=self.model_config.rssm_adam_epsilon,
                         )
-                elif self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA]:
+                elif self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA, ModelType.HJEPA]:
                     lr = adjust_learning_rate(
                         self.model_config, self.optimizer, self.ds, step
                     )
@@ -324,7 +330,7 @@ class Trainer:
                 print(f"WARNING: Some models were not loaded from checkpoint: {checkpoint.keys()}, {save_dict=}")
 
         probing_enc_result = probing.probe_enc_position(
-            backbone=self.pred_ms.backbone,
+            backbone=self.pred_ms.backbone if self.config.model_type != ModelType.HJEPA else self.pred_ms.backbones,
             embedding=self.pred_ms.embedding,
             dataset=self.val_ds,
             tubelet_size=self.pred_ms.args.tubelet_size,
@@ -332,7 +338,7 @@ class Trainer:
             config=self.config.probing_cfg,
             name_suffix=f"_{self.epoch}",
             model_type=self.config.model_type,
-            visualize=self.config.model_type == ModelType.VJEPA,
+            visualize=self.config.model_type == ModelType.VJEPA or self.config.model_type == ModelType.HJEPA,
             probe_model=save_dict["probe_enc_model"],
             cfg_name=self.config.cfg_name
         )
@@ -365,7 +371,7 @@ class Trainer:
         log_dict["avg_eval_enc_loss_normalized_rmse"] = np.sqrt(probing_enc_result.average_eval_loss_normalized)
 
 
-        if self.config.model_type != ModelType.VJEPA:
+        if self.config.model_type not in [ModelType.VJEPA, ModelType.HJEPA]:
             # NOTE SAMI: VJEPA can't do this because our predictor is self-predictive and is not a dynamics model.
             probing_result = probing.probe_pred_position(
                 self.pred_ms.backbone,

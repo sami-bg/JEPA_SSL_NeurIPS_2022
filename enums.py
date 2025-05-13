@@ -8,6 +8,7 @@ class ModelType(enum.Enum):
     RSSM = enum.auto()
     SimCLR = enum.auto()
     VJEPA = enum.auto()
+    HJEPA = enum.auto()
 
 class DatasetType(enum.Enum):
     Single = enum.auto()
