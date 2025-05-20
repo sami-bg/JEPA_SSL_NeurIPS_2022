@@ -13,6 +13,7 @@ module load miniconda3
 conda activate vlad
 
 # Expecting arguments: combination, num_trials, num_iterations
+# Combination example: 
 combination=$1
 num_trials=$2
 model_type=$3

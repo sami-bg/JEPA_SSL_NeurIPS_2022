@@ -43,14 +43,15 @@ def main():
                         help="Combination type: fixed or changing")
     parser.add_argument("num_trials", nargs="+",
                         help="A list of num_trials values for each job in the chain, e.g. 30 20 for 60 then 40 sweeps.")
-    
+    parser.add_argument("model_type", choices=["hjepa", "vjepa"],
+                        help="Model type: hjepa or vjepa")
     args = parser.parse_args()
     
     dependency = None  # No dependency for the first job
     
     for i, num_trials in enumerate(args.num_trials, start=1):
         print(f"Submitting job {i} for combination '{args.combination}' with num_trials={num_trials} ...")
-        job_id = submit_job("slurm_mega_sweep.sh", [args.combination, num_trials], dependency=dependency)
+        job_id = submit_job("slurm_mega_sweep.sh", [args.combination, num_trials, args.model_type], dependency=dependency)
         print(f"Job {i} submitted with job ID {job_id}")
         # Set dependency for the next job to be after this job completes successfully
         dependency = job_id
