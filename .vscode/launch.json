@@ -1,0 +1,39 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "HJEPA Training",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "args": [
+                "--configs", "reproduce_configs/hjepa/changing_structured/sweep_changing_structured.(0.50).hjepa.yaml",
+                "--values",
+                "wandb=True",
+                "output_path=results/param_sweep/sweep_changing_structured.(0.50).hjepa/tsNone_mr0.7/lr_0.00130565",
+                "model_type=HJEPA",
+                "hjepa.base_lr=0.001305647977176992",
+                "hjepa.tubelet_sizes=[2, 6]",
+                "hjepa.masking_ratio=0.7",
+                "run_name=sweep_changing_structured.(0.50).hjepa_lr_0.00130565_tsNone_mr0.7",
+                "run_group=sweep_changing_structured.(0.50).hjepa_tsNone_mr0.7_lr_sweep",
+                "quick_debug=true"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "/users/sboughan/.conda/envs/vlad/bin/python",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

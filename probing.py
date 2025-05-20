@@ -87,7 +87,6 @@ def probe_enc_position(
     model_type: ModelType,
     probe_model: Optional[torch.nn.Module] = None,
     cfg_name: str = "",  # Just for visualization name
-    hjepa_hierarchy: int = 0,
 ):
     sf = plt.savefig
     if quick_debug:
@@ -101,11 +100,6 @@ def probe_enc_position(
         #     plt.scatter(*dataset.unnormalize_location(location), color="red", marker="x")
         #     plt.show()
         #     sf(f"visualizations/test_{i}_enc_position_visualization_{cfg_name}.png")
-
-    if model_type == ModelType.HJEPA:
-        # NOTE 05/13 this can still re-use the same pretrained model so maybe make it 
-        # in a way that doesnt need to retrain everything ? or we call this fn once per hier for hjepa
-        backbone = backbone[hjepa_hierarchy]
 
     test_batch = dataset[0]
     batch_size = test_batch.states.shape[0]
@@ -147,6 +141,9 @@ def probe_enc_position(
         config.epochs_enc = 1
     step = 0
     sample_step = 0
+    summary = {f'finetune_enc{name_suffix}/min_loss': float('inf'),
+               f'finetune_enc{name_suffix}/dataset_noise': wandb.config.get('dataset_noise', 0),
+               f'finetune_enc{name_suffix}/dataset_static_noise': wandb.config.get('dataset_static_noise', 0)}
 
     ##### TRAINING #####
     if probe_model is None:
@@ -203,11 +200,15 @@ def probe_enc_position(
                     for i, val in enumerate(per_dot_losses):
                         log_dict[f"finetune_enc{name_suffix}/loss_dot_{i}"] = val.item()
                     wandb.log(log_dict)
+                    summary[f'finetune_enc{name_suffix}/min_loss'] = min(summary[f'finetune_enc{name_suffix}/min_loss'],
+                                                                         loss.mean().item())
 
                 step += 1
                 sample_step += batch.locations.shape[0]
                 if quick_debug:
                     break
+
+    wandb.summary.update(summary)
 
     ##### EVALUATION #####
     with torch.no_grad():

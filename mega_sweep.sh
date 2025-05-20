@@ -13,7 +13,7 @@ conda activate vlad
 # Parse input arguments
 combination=$1     # fixed or changing
 num_trials=$2      # number of learning rate sweeps
-
+model_type=$3
 # Create timestamped log directory
 timestamp=$(date +"%Y-%m-%d-%H-%M-%S")
 log_dir="./ccv/logs/mega_sweep_${combination}_${timestamp}" # More specific log dir name
@@ -46,7 +46,7 @@ for structure in "uniform"; do
       for mr in "${masking_ratios[@]}"; do
 
         # Build the configuration file path.
-        config_path="reproduce_configs/vjepa/${combination}_${structure}/sweep_${combination}_${structure}.(${noise}).vjepa.yaml"
+        config_path="reproduce_configs/${model_type}/${combination}_${structure}/sweep_${combination}_${structure}.(${noise}).${model_type}.yaml"
 
         # Check if config file exists before launching
         if [ ! -f "${config_path}" ]; then

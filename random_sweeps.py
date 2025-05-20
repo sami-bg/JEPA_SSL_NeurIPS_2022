@@ -15,10 +15,11 @@ def parse_args():
     parser.add_argument("--min_lr_exp", type=float, default=-3, help="Minimum learning rate exponent (10^x)")
     parser.add_argument("--max_lr_exp", type=float, default=-2.5, help="Maximum learning rate exponent (10^x)")
     parser.add_argument("--output_dir", type=str, default="results/param_sweep", help="Base output directory for all sweeps")
-    parser.add_argument("--tubelet_size", type=int, required=True, help="Tubelet size to use")
+    parser.add_argument("--tubelet_size", type=int, required=False, help="Tubelet size to use")
+    parser.add_argument("--tubelet_sizes", type=int, nargs="+", help="Tubelet sizes to use - only for HJEPA")
     parser.add_argument("--masking_ratio", type=float, required=True, help="Masking ratio to use")
     parser.add_argument("--quick_debug", action='store_true', help="Enable quick debug mode")
-    parser.add_argument("--temporal_inconsistency_enabled", choices=["True", "False"], help="Enable temporal inconsistency")
+    parser.add_argument("--temporal_inconsistency_enabled", choices=["True", "False"], default="False", help="Enable temporal inconsistency")
     parser.add_argument("--temporal_inconsistency_type", type=str, default="full", choices=["full", "pairwise"], help="Temporal inconsistency type")
     return parser.parse_args()
 
@@ -33,6 +34,8 @@ def detect_model_type(config_path):
     
     if "vjepa" in config_name.lower():
         return "VJEPA"
+    elif "hjepa" in config_name.lower():
+        return "HJEPA"
     elif "vicreg" in config_name.lower():
         return "VICReg"
     elif "simclr" in config_name.lower():
@@ -56,6 +59,12 @@ def main():
     # Detect model type
     model_type = detect_model_type(config_path)
     print(f"Detected model type: {model_type}")
+    if model_type == "VJEPA":
+        assert args.tubelet_size is not None, "Tubelet size must be specified for VJEPA"
+    if model_type == "HJEPA":
+        assert args.tubelet_size is None, "Tubelet size must not be specified for HJEPA"
+        assert args.tubelet_sizes is not None, "Tubelet sizes must be specified for HJEPA"
+        assert len(args.tubelet_sizes) > 1, "At least two tubelet sizes must be specified for HJEPA"
     
     # Create a more specific output directory including tubelet size and masking ratio
     sweep_params_str = f"ts{args.tubelet_size}_mr{args.masking_ratio}"
@@ -83,6 +92,14 @@ def main():
         # Construct run name for wandb, including all swept parameters
         run_name = f"{config_basename}_lr_{lr:.8f}_ts{args.tubelet_size}_mr{args.masking_ratio}"
 
+        temporal_inconsistency_args = [
+            f"{model_type.lower()}.temporal_inconsistency_enabled={args.temporal_inconsistency_enabled}",
+            f"{model_type.lower()}.temporal_inconsistency_type={args.temporal_inconsistency_type}",
+        ]
+
+        if model_type == "HJEPA":
+            temporal_inconsistency_args = []
+
         # Build the command
         cmd = [
             PYTHON_EXECUTABLE, "train.py",
@@ -93,10 +110,10 @@ def main():
             f"model_type={model_type}",
             # Pass the specific lr, tubelet_size, and masking_ratio
             f"{model_type.lower()}.base_lr={lr}",
-            f"{model_type.lower()}.tubelet_size={args.tubelet_size}",
+            (f"{model_type.lower()}.tubelet_size={args.tubelet_size}" if model_type != "HJEPA"
+             else f"{model_type.lower()}.tubelet_sizes={args.tubelet_sizes}"),
             f"{model_type.lower()}.masking_ratio={args.masking_ratio}",
-            f"{model_type.lower()}.temporal_inconsistency_enabled={args.temporal_inconsistency_enabled}",
-            f"{model_type.lower()}.temporal_inconsistency_type={args.temporal_inconsistency_type}",
+            *temporal_inconsistency_args,
             f"run_name={run_name}",
             f"run_group={run_group}",
             # Pass quick_debug correctly
@@ -117,4 +134,14 @@ def main():
             print(f"Warning: Command exited with return code {process.returncode}")
 
 if __name__ == "__main__":
+    import sys
+    sys.argv[1:] = [
+        "--config", "reproduce_configs/hjepa/changing_structured/sweep_changing_structured.(0.50).hjepa.yaml",
+        "--num_trials", "1",
+        "--tubelet_sizes", "2", "4",
+        "--masking_ratio", "0.7",
+        "--quick_debug",
+        "--temporal_inconsistency_enabled", "False",
+        "--temporal_inconsistency_type", "full"
+    ]
     main()

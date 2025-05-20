@@ -262,9 +262,7 @@ class Trainer:
                             eps=self.model_config.rssm_adam_epsilon,
                         )
                 elif self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA, ModelType.HJEPA]:
-                    lr = adjust_learning_rate(
-                        self.model_config, self.optimizer, self.ds, step
-                    )
+                    lr = adjust_learning_rate(self.model_config, self.optimizer, self.ds, step)
 
                 self.sample_step += s.shape[1]
                 self.step = step
@@ -273,9 +271,7 @@ class Trainer:
                 loss_info = self.pred_ms.forward(s, a, step=self.step)
                 loss_info.total_loss.backward()
                 if self.config.model_type == ModelType.RSSM:
-                    nn.utils.clip_grad_norm_(
-                        self.pred_ms.parameters(), 1000, norm_type=2
-                    )
+                    nn.utils.clip_grad_norm_(self.pred_ms.parameters(), 1000, norm_type=2)
                 self.optimizer.step()
 
                 if step % 100 == 0 and wandb.run is not None:
@@ -299,38 +295,45 @@ class Trainer:
                 self.epoch % 20 == 0 and not self.config.eval_at_the_end_only
             ) or self.epoch >= self.model_config.epochs:
                 self.save_checkpoint()
-                self.validate()
+                if self.config.model_type == ModelType.HJEPA:
+                    for hier_idx in range(self.pred_ms.args.hjepa_num_hierarchies):
+                        self.validate(hier_idx)
+                else:
+                    self.validate()
 
-    def validate(self):
+    def validate(self, hier_idx: int = None):
         if not self.config.probing_cfg.full_finetune:
             self.pred_ms.eval()
 
         log_dict = {
-            "epoch": self.epoch,
+            "epoch"+(f'-h{hier_idx}' if hier_idx is not None else ''): self.epoch,
             "sample_step": self.sample_step,
+            **({"hier_idx": hier_idx} if hier_idx is not None else {}),
         }
         save_dict = {
-            "epoch": self.epoch,
+            "epoch"+(f'-h{hier_idx}' if hier_idx is not None else ''): self.epoch,
             "sample_step": self.sample_step,
+            **({"hier_idx": hier_idx} if hier_idx is not None else {}),
             "probe_enc_model": None,
             "probe_pred_model": None,
             "probe_mpc_model": None,
             "probe_action_model_within_tubelet": None,
             "probe_action_model_between_tubelet": None,
-        }
+        } 
 
         if self.config.load_probing_checkpoint_path is not None:
             checkpoint = torch.load(self.config.load_probing_checkpoint_path)
             save_dict["probe_enc_model"] = checkpoint.get("probe_enc_model", None)
             save_dict["probe_pred_model"] = checkpoint.get("probe_pred_model", None)
             save_dict["probe_mpc_model"] = checkpoint.get("probe_mpc_model", None)
-            save_dict[f"probe_action_model_within_tubelet"] = checkpoint.get("probe_action_model_within_tubelet", None)
-            save_dict[f"probe_action_model_between_tubelet"] = checkpoint.get("probe_action_model_between_tubelet", None)
+            save_dict["probe_action_model_within_tubelet"] = checkpoint.get("probe_action_model_within_tubelet", None)
+            save_dict["probe_action_model_between_tubelet"] = checkpoint.get("probe_action_model_between_tubelet", None)
             if None in save_dict.values():
                 print(f"WARNING: Some models were not loaded from checkpoint: {checkpoint.keys()}, {save_dict=}")
 
+        backbone = self.pred_ms.backbone if self.config.model_type != ModelType.HJEPA else self.pred_ms.backbones[hier_idx]
         probing_enc_result = probing.probe_enc_position(
-            backbone=self.pred_ms.backbone if self.config.model_type != ModelType.HJEPA else self.pred_ms.backbones,
+            backbone=backbone,
             embedding=self.pred_ms.embedding,
             dataset=self.val_ds,
             tubelet_size=self.pred_ms.args.tubelet_size,
@@ -374,7 +377,7 @@ class Trainer:
         if self.config.model_type not in [ModelType.VJEPA, ModelType.HJEPA]:
             # NOTE SAMI: VJEPA can't do this because our predictor is self-predictive and is not a dynamics model.
             probing_result = probing.probe_pred_position(
-                self.pred_ms.backbone,
+                backbone,
                 dataset=self.val_ds,
                 embedding=self.pred_ms.embedding,
                 tubelet_size=self.pred_ms.args.tubelet_size,
@@ -410,7 +413,7 @@ class Trainer:
 
             if self.config.probe_mpc:
                 probe_mpc_result = probing.probe_mpc(
-                    self.pred_ms.backbone,
+                    backbone,
                     embedding=self.pred_ms.embedding,
                     predictor=self.pred_ms.predictor,
                     prober=probing_result.model,

@@ -15,6 +15,7 @@ conda activate vlad
 # Expecting arguments: combination, num_trials, num_iterations
 combination=$1
 num_trials=$2
+model_type=$3
 
 # Call the helper script with the provided arguments.
-./mega_sweep.sh "${combination}" "${num_trials}"
+./mega_sweep.sh "${combination}" "${num_trials}" "${model_type}"
