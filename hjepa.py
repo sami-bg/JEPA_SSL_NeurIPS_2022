@@ -65,6 +65,8 @@ class HJEPAConfig(ConfigBase):
     encoder_attn_drop_rate: float = 0.0
     encoder_drop_path_rate: float = 0.0
 
+    # need to backwards compat
+    rnn_burnin: int = 1
 
 @dataclass
 class LossInfo:
