@@ -32,7 +32,7 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": true,
-            "python": "/users/sboughan/.conda/envs/vlad/bin/python",
+            "python": "./venv/bin/python",
             "cwd": "${workspaceFolder}"
         }
     ]

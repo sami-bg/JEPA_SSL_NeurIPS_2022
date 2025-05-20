@@ -105,7 +105,7 @@ def probe_enc_position(
     batch_size = test_batch.states.shape[0]
     num_timesteps = test_batch.states.shape[1]
     num_tubelets = num_timesteps // tubelet_size
-    if model_type == ModelType.VJEPA:
+    if model_type == ModelType.VJEPA or model_type == ModelType.HJEPA:
         num_dots, location_dim = test_batch.locations[0, 0].shape
         prober_output_shape = (num_dots, location_dim * tubelet_size)
         # NOTE SAMI: For V-JEPA, the embedding is actually the flattened spatial patches for a tubelet.
@@ -150,7 +150,7 @@ def probe_enc_position(
         for epoch in tqdm(range(config.epochs_enc)):
             for batch in dataset:
                 target_loc = batch.locations[:, 0].cuda().float()
-                if model_type == ModelType.VJEPA:
+                if model_type == ModelType.VJEPA or model_type == ModelType.HJEPA:
                     # NOTE SAMI: For V-JEPA we re-shape the locations to be (batch_size, num_tubelets, num_dots, 4).
                     target_loc = batch.locations.view(batch_size, num_tubelets, num_dots, location_dim * tubelet_size)
                     states = batch.states.permute(1, 0, 2, 3, 4)
@@ -214,7 +214,7 @@ def probe_enc_position(
     with torch.no_grad():
         eval_losses = []
         for batch in dataset:
-            if model_type == ModelType.VJEPA:
+            if model_type == ModelType.VJEPA or model_type == ModelType.HJEPA:
                 target_loc = batch.locations.view(batch_size, num_timesteps // tubelet_size, num_dots, location_dim * tubelet_size).cuda().float()
                 states = batch.states.permute(1, 0, 2, 3, 4)
                 e = backbone(states.cuda())
@@ -447,7 +447,7 @@ def probe_pred_position_visualize(
         h0 = None
 
     # For V-JEPA, we need to pass in at least two frames to get a tubelet
-    if model_type == ModelType.VJEPA:
+    if model_type == ModelType.VJEPA or model_type == ModelType.HJEPA:
         e = model(states[0:2].cuda())
     else:
         e = model(states[0].cuda())

@@ -131,7 +131,8 @@ class Trainer:
         print("number of params:", self.n_parameters)
         if config.wandb:
             wandb.run.summary["n_params"] = self.n_parameters
-            wandb.run.summary["actual_repr_size"] = self.pred_ms.embedding
+            wandb.run.summary["actual_repr_size"] = getattr(self.pred_ms, "embedding",
+                                                    getattr(self.pred_ms, "embeddings", None))
 
     def init_optimizer(self):
         if self.config.model_type in [ModelType.VICReg, ModelType.SimCLR, ModelType.VJEPA, ModelType.HJEPA]:
@@ -240,9 +241,13 @@ class Trainer:
 
     def train(self):
         self.save_checkpoint()
-
+        hier_indices = range(len(self.pred_ms.backbones)) if self.config.model_type == ModelType.HJEPA else [None]
         if not self.config.eval_at_the_end_only or self.config.quick_debug:
-            self.validate()
+            if self.config.model_type == ModelType.HJEPA:
+                for hier_idx in hier_indices:
+                    self.validate(hier_idx)
+            else:
+                self.validate()
 
         for epoch in tqdm(range(1, self.pred_ms.args.epochs + 1)):
             self.epoch = epoch
@@ -296,7 +301,7 @@ class Trainer:
             ) or self.epoch >= self.model_config.epochs:
                 self.save_checkpoint()
                 if self.config.model_type == ModelType.HJEPA:
-                    for hier_idx in range(self.pred_ms.args.hjepa_num_hierarchies):
+                    for hier_idx in hier_indices:
                         self.validate(hier_idx)
                 else:
                     self.validate()
@@ -332,11 +337,13 @@ class Trainer:
                 print(f"WARNING: Some models were not loaded from checkpoint: {checkpoint.keys()}, {save_dict=}")
 
         backbone = self.pred_ms.backbone if self.config.model_type != ModelType.HJEPA else self.pred_ms.backbones[hier_idx]
+        embedding = self.pred_ms.embeddings[hier_idx] if self.config.model_type == ModelType.HJEPA else self.pred_ms.embedding
+        tubelet_size = self.pred_ms.args.tubelet_sizes[hier_idx] if self.config.model_type == ModelType.HJEPA else self.pred_ms.args.tubelet_size
         probing_enc_result = probing.probe_enc_position(
             backbone=backbone,
-            embedding=self.pred_ms.embedding,
+            embedding=embedding,
             dataset=self.val_ds,
-            tubelet_size=self.pred_ms.args.tubelet_size,
+            tubelet_size=tubelet_size,
             quick_debug=self.config.quick_debug,
             config=self.config.probing_cfg,
             name_suffix=f"_{self.epoch}",
@@ -379,7 +386,7 @@ class Trainer:
             probing_result = probing.probe_pred_position(
                 backbone,
                 dataset=self.val_ds,
-                embedding=self.pred_ms.embedding,
+                embedding=embedding,
                 tubelet_size=self.pred_ms.args.tubelet_size,
                 predictor=self.pred_ms.predictor,
                 visualize=False,
@@ -414,7 +421,7 @@ class Trainer:
             if self.config.probe_mpc:
                 probe_mpc_result = probing.probe_mpc(
                     backbone,
-                    embedding=self.pred_ms.embedding,
+                    embedding=embedding,
                     predictor=self.pred_ms.predictor,
                     prober=probing_result.model,
                     plan_size=self.config.val_n_steps,
